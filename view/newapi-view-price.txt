@@ -1,0 +1,101 @@
+  -- 视图1：每个 key 每天每个模型的消费明细 + 定价
+ CREATE OR REPLACE VIEW v_token_daily_model AS
+  SELECT
+      FROM_UNIXTIME(l.created_at, '%Y-%m-%d') AS stat_date,
+      t.id AS token_id,
+      t.name AS token_name,
+      t.`key` AS token_key,
+      t.`group` AS token_group,
+      l.model_name,
+      -- 计费类型
+      CASE
+          WHEN JSON_EXTRACT(
+              (SELECT `value` FROM options WHERE `key` = 'ModelPrice' LIMIT 1),
+              CONCAT('$."', l.model_name, '"')
+          ) IS NOT NULL
+          THEN '固定价格'
+          ELSE '倍率计费'
+      END AS billing_type,
+      -- 当前模型倍率
+      CAST(IFNULL(JSON_UNQUOTE(JSON_EXTRACT(
+          (SELECT `value` FROM options WHERE `key` = 'ModelRatio' LIMIT 1),
+          CONCAT('$."', l.model_name, '"')
+      )), '0') AS DECIMAL(10,4)) AS current_model_ratio,
+      -- 当前固定价格
+      CAST(IFNULL(JSON_UNQUOTE(JSON_EXTRACT(
+          (SELECT `value` FROM options WHERE `key` = 'ModelPrice' LIMIT 1),
+          CONCAT('$."', l.model_name, '"')
+      )), '0') AS DECIMAL(10,4)) AS current_fixed_price,
+      -- 当前补全倍率
+      CAST(IFNULL(JSON_UNQUOTE(JSON_EXTRACT(
+          (SELECT `value` FROM options WHERE `key` = 'CompletionRatio' LIMIT 1),
+          CONCAT('$."', l.model_name, '"')
+      )), '0') AS DECIMAL(10,4)) AS current_completion_ratio,
+      -- 实际消费
+      COUNT(*) AS request_count,
+      SUM(l.quota) AS total_quota,
+      ROUND(SUM(l.quota) / 500.0, 4) AS estimated_usd,
+      ROUND(SUM(l.quota) / 500.0 * 7.3, 4) AS estimated_cny,
+      SUM(l.prompt_tokens) AS total_prompt_tokens,
+      SUM(l.completion_tokens) AS total_completion_tokens,
+      SUM(l.prompt_tokens + l.completion_tokens) AS total_tokens,
+      FROM_UNIXTIME(MIN(l.created_at)) AS first_request_at,
+      FROM_UNIXTIME(MAX(l.created_at)) AS last_request_at
+  FROM tokens t
+  JOIN logs l ON l.token_id = t.id
+  WHERE l.type = 2
+    AND t.deleted_at IS NULL
+  GROUP BY
+      FROM_UNIXTIME(l.created_at, '%Y-%m-%d'),
+      t.id, t.name, t.`key`, t.`group`,
+      l.model_name;
+
+  -- 查询示例
+  SELECT * FROM v_token_daily_model
+  WHERE token_key = 'xxx'
+    AND stat_date >= '2026-07-01'
+  ORDER BY stat_date DESC, total_quota DESC;
+
+  -- 视图2：每个 key 的每日总花费 + 涉及模型及定价
+  CREATE OR REPLACE VIEW v_token_daily_total AS
+  WITH pricing_raw AS (
+      SELECT
+          MAX(CASE WHEN `key` = 'ModelRatio' THEN `value` END) AS model_ratio_json,
+          MAX(CASE WHEN `key` = 'ModelPrice' THEN `value` END) AS model_price_json,
+          MAX(CASE WHEN `key` = 'CompletionRatio' THEN `value` END) AS completion_ratio_json
+      FROM options
+      WHERE `key` IN ('ModelRatio', 'ModelPrice', 'CompletionRatio')
+  )
+  SELECT
+      FROM_UNIXTIME(l.created_at, '%Y-%m-%d') AS stat_date,
+      t.id AS token_id,
+      t.name AS token_name,
+      t.`key` AS token_key,
+      t.`group` AS token_group,
+      -- 当日使用的模型列表
+      GROUP_CONCAT(DISTINCT l.model_name ORDER BY l.model_name SEPARATOR ', ') AS models_used,
+      COUNT(DISTINCT l.model_name) AS distinct_models,
+      -- 汇总
+      COUNT(*) AS total_requests,
+      SUM(l.quota) AS total_quota,
+      ROUND(SUM(l.quota) / 500.0, 4) AS estimated_usd,
+      ROUND(SUM(l.quota) / 500.0 * 7.3, 4) AS estimated_cny,
+      SUM(l.prompt_tokens) AS total_prompt_tokens,
+      SUM(l.completion_tokens) AS total_completion_tokens,
+      SUM(l.prompt_tokens + l.completion_tokens) AS total_tokens,
+      FROM_UNIXTIME(MIN(l.created_at)) AS day_first_request,
+      FROM_UNIXTIME(MAX(l.created_at)) AS day_last_request
+  FROM tokens t
+  JOIN logs l ON l.token_id = t.id
+  CROSS JOIN pricing_raw pr
+  WHERE l.type = 2
+    AND t.deleted_at IS NULL
+  GROUP BY
+      FROM_UNIXTIME(l.created_at, '%Y-%m-%d'),
+      t.id, t.name, t.`key`, t.`group`;
+
+  -- 查询示例
+  SELECT * FROM v_token_daily_total
+  WHERE token_key = 'xxx'
+    AND stat_date >= '2026-07-01'
+  ORDER BY stat_date DESC;
