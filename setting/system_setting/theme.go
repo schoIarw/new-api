@@ -19,6 +19,8 @@ func init() {
 }
 
 func syncThemeToCommon() {
+	// Theme switching is disabled; always force "classic".
+	themeSettings.Frontend = "classic"
 	common.SetTheme(themeSettings.Frontend)
 }
 

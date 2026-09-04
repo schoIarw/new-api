@@ -1,0 +1,96 @@
+# New-API 管理与网关分体部署（同一镜像，双容器角色）
+#
+# 架构：
+#   new-api-admin    默认配置，承载 /api 管理路由 + Web 前端 + 支付回调 + 定时任务
+#   new-api-gateway  RELAY_ONLY=true，仅承载 relay 协议面（/v1 /mj /suno /kling /jimeng /dashboard/billing）+ /healthz
+#   两容器共享外部 mysql8 容器 + 内置 Redis
+#
+# 使用：
+#   docker compose -f docker-compose.split.yml up -d
+#   管理后台: http://localhost:3000
+#   网关入口: http://localhost:3001 （API 客户端的 base_url 指向这里）
+#
+# ⚠️  IMPORTANT: 部署到生产前修改所有默认密码！
+
+services:
+  new-api-admin:
+    image: new-api:rc.23-split
+    container_name: new-api-admin
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - admin_data:/data
+    environment:
+      # 使用系统已存在的 mysql8 容器（mysql:8.0），通过宿主机 3306 端口访问
+      # Go MySQL driver 用最后一个 @ 作 user:pass 与 tcp 段的分隔，密码含 @ 无需转义
+      - SQL_DSN=root:Root@123456@tcp(host.docker.internal:3306)/oneapi  # ⚠️ 与网关必须一致
+      - REDIS_CONN_STRING=redis://:NewApi2026@redis:6379  # ⚠️ 与网关必须一致（热加载关键）
+      - SESSION_SECRET=split-deploy-session-secret-change-me  # ⚠️ 与网关必须一致，生产环境必须换成随机串
+      - SYNC_FREQUENCY=60  # ⚠️ 与网关必须一致
+      - BATCH_UPDATE_ENABLED=true
+      - NODE_NAME=admin-1
+      - TZ=Asia/Shanghai
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Linux 下解析到宿主机，访问 mysql8 的 3306 端口
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - new-api-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  new-api-gateway:
+    image: new-api:rc.23-split
+    container_name: new-api-gateway
+    restart: always
+    ports:
+      - "3001:3000"
+    volumes:
+      - gateway_data:/data
+    environment:
+      - RELAY_ONLY=true  # 唯一角色差异：仅挂载 relay 路由与旧版 billing 兼容路由
+      - SQL_DSN=root:Root@123456@tcp(host.docker.internal:3306)/oneapi
+      - REDIS_CONN_STRING=redis://:NewApi2026@redis:6379
+      - SESSION_SECRET=split-deploy-session-secret-change-me
+      - SYNC_FREQUENCY=60
+      - BATCH_UPDATE_ENABLED=true  # 网关产生扣费，必须开启
+      - NODE_NAME=gateway-1
+      - TZ=Asia/Shanghai
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - new-api-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/healthz | grep -o '\"status\":\\s*\"ok\"' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    container_name: new-api-redis
+    restart: always
+    command: ["redis-server", "--requirepass", "NewApi2026"]  # ⚠️ IMPORTANT: Change this password in production!
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "NewApi2026", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - new-api-network
+
+volumes:
+  admin_data:
+  gateway_data:
+
+networks:
+  new-api-network:
+    driver: bridge

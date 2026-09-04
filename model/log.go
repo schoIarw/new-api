@@ -55,6 +55,22 @@ const (
 	LogTypeRefund  = 6
 )
 
+// buildAccountFuzzyPattern 构建 account 字段的模糊匹配模式：
+//  - 先转义 LIKE 元字符（% _ !），用 ! 作为 ESCAPE 字符
+//  - 再在首尾加 %，实现"包含"式模糊搜索
+func buildAccountFuzzyPattern(keyword string) (string, error) {
+	if keyword == "" {
+		return "", nil
+	}
+	keyword = strings.ReplaceAll(keyword, "!", "!!")
+	keyword = strings.ReplaceAll(keyword, "_", "!_")
+	keyword = strings.ReplaceAll(keyword, "%", "!%")
+	if err := validateLikePattern(keyword); err != nil {
+		return "", err
+	}
+	return "%" + keyword + "%", nil
+}
+
 func formatUserLogs(logs []*Log, startIdx int) {
 	for i := range logs {
 		logs[i].ChannelName = ""
@@ -295,24 +311,25 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 				TokenUsed:   params.PromptTokens + params.CompletionTokens,
 			})
 		})
-		createdAt := common.GetTimestamp()
-		statDate := time.Unix(createdAt, 0).Format("2006-01-02")
-		totalTokens := params.PromptTokens + params.CompletionTokens
-		gopool.Go(func() {
-			UpdateTokenDailySummary(
-				statDate,
-				params.TokenId,
-				"",
-				params.TokenName,
-				params.Group,
-				params.ModelName,
-				params.Quota,
-				params.PromptTokens,
-				params.CompletionTokens,
-				totalTokens,
-				createdAt,
-			)
-		})
+		//createdAt := common.GetTimestamp()
+		//statDate := time.Unix(createdAt, 0).Format("2006-01-02")
+		//totalTokens := params.PromptTokens + params.CompletionTokens
+		// 注释掉：账单功能写入每30秒逐行写两张汇总表 (不再累积逐行写入汇总表)
+		//gopool.Go(func() {
+		//	UpdateTokenDailySummary(
+		//		statDate,
+		//		params.TokenId,
+		//		"",
+		//		params.TokenName,
+		//		params.Group,
+		//		params.ModelName,
+		//		params.Quota,
+		//		params.PromptTokens,
+		//		params.CompletionTokens,
+		//		totalTokens,
+		//		createdAt,
+		//	)
+		//})
 	}
 }
 
@@ -372,7 +389,11 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 		tx = tx.Where("logs.model_name like ?", modelName)
 	}
 	if username != "" {
-		tx = tx.Where("logs.username = ?", username)
+		accountPattern, err := buildAccountFuzzyPattern(username)
+		if err != nil {
+			return nil, 0, err
+		}
+		tx = tx.Where("logs.account LIKE ? ESCAPE '!'", accountPattern)
 	}
 	if tokenName != "" {
 		tx = tx.Where("logs.token_name = ?", tokenName)
@@ -510,8 +531,12 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, sum(prompt_tokens) + sum(completion_tokens) tpm")
 
 	if username != "" {
-		tx = tx.Where("username = ?", username)
-		rpmTpmQuery = rpmTpmQuery.Where("username = ?", username)
+		accountPattern, err := buildAccountFuzzyPattern(username)
+		if err != nil {
+			return stat, err
+		}
+		tx = tx.Where("account LIKE ? ESCAPE '!'", accountPattern)
+		rpmTpmQuery = rpmTpmQuery.Where("account LIKE ? ESCAPE '!'", accountPattern)
 	}
 	if tokenName != "" {
 		tx = tx.Where("token_name = ?", tokenName)

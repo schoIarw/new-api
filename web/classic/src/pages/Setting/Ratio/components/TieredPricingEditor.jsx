@@ -32,7 +32,7 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import { IconCopy, IconDelete, IconPlus } from '@douyinfe/semi-icons';
-import { renderQuota } from '../../../../helpers/render';
+import { renderQuota, getCurrencyConfig } from '../../../../helpers/render';
 import { copy, showSuccess } from '../../../../helpers';
 import { BILLING_EXTRA_VARS, BILLING_CACHE_VAR_MAP, BILLING_CONDITION_VARS } from '../../../../constants';
 import {
@@ -60,13 +60,22 @@ import {
 
 const { Text } = Typography;
 
-const PRICE_SUFFIX = '$/1M tokens';
+function getPriceSuffix() {
+  const { symbol } = getCurrencyConfig();
+  return `${symbol}/1M tokens`;
+}
 
 function unitCostToPrice(uc) {
-  return Number(uc) || 0;
+  const { rate } = getCurrencyConfig();
+  const num = Number(uc);
+  if (!Number.isFinite(num)) return 0;
+  return num * (rate > 0 ? rate : 1);
 }
 function priceToUnitCost(price) {
-  return Number(price) || 0;
+  const { rate } = getCurrencyConfig();
+  const num = Number(price);
+  if (!Number.isFinite(num)) return 0;
+  return num / (rate > 0 ? rate : 1);
 }
 
 const OPS = ['<', '<=', '>', '>='];
@@ -365,7 +374,7 @@ function PriceInput({ unitCost, field, index, onUpdate, placeholder }) {
     <Input
       value={text}
       placeholder={placeholder || '0'}
-      suffix={PRICE_SUFFIX}
+      suffix={getPriceSuffix()}
       onChange={handleChange}
       style={{ width: '100%', marginTop: 2 }}
     />
@@ -1271,7 +1280,7 @@ p 和 c 是兜底变量，代表所有没有被表达式单独定价的 token。
 
 ### 价格系数
 
-表达式中的数字系数是 $/1M tokens 的价格。例如 p * 2.5 表示输入 $2.50/1M tokens。
+表达式中的数字系数以显示货币/1M tokens 为单位输入（如人民币 ¥），保存时自动换算为美元。例如 p * 17.5 在 ¥7 汇率下表示 ¥2.50/1M tokens，存入后端为 $2.50。
 
 ## 表达式示例
 
@@ -1305,7 +1314,7 @@ len <= 128000
 2. tier 名称用英文，如 "base"、"standard"、"long_context"
 3. 阶梯条件用 len（不要用 p），支持 <、<=、>、>=
 4. 多档用嵌套三元运算符：条件1 ? tier(...) : (条件2 ? tier(...) : tier(...))
-5. 价格系数直接写供应商官方 $/1M tokens 价格
+5. 价格系数以当前显示货币输入，保存时自动换算为美元存储
 6. 不需要缓存/图片/音频单独定价时可以不写对应变量，它们的 token 会自动包含在 p/c 中
 
 请根据用户提供的模型信息和定价需求，生成计费表达式。`;

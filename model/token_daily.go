@@ -491,19 +491,20 @@ func upsertTokenDailyTotalSummary(statDate string, tokenID int, tokenKey, tokenN
 // Background flush goroutine
 // ============================================================
 
+// 注释掉：账单功能写入每30秒逐行写两张汇总表
 // StartTokenDailySummaryFlusher starts a background goroutine that periodically
 // flushes the in-memory summary cache to the database.
-func StartTokenDailySummaryFlusher() {
-	if !common.DataExportEnabled {
-		return
-	}
-	go func() {
-		for {
-			time.Sleep(30 * time.Second)
-			FlushTokenDailySummaryCache()
-		}
-	}()
-}
+//func StartTokenDailySummaryFlusher() {
+//	if !common.DataExportEnabled {
+//		return
+//	}
+//	go func() {
+//		for {
+//			time.Sleep(30 * time.Second)
+//			FlushTokenDailySummaryCache()
+//		}
+//	}()
+//}
 
 // ============================================================
 // Query functions using materialized summary tables (optimized path)

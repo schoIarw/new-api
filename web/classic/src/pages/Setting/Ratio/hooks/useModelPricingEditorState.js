@@ -18,13 +18,27 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState } from 'react';
 import { API, showError, showSuccess } from '../../../../helpers';
+import { getCurrencyConfig } from '../../../../helpers/render';
 import {
   combineBillingExpr,
   splitBillingExprAndRequestRules,
 } from '../components/requestRuleExpr';
 
 export const PAGE_SIZE = 10;
-export const PRICE_SUFFIX = '$/1M tokens';
+export const getPriceSuffix = () => {
+  const { symbol } = getCurrencyConfig();
+  return `${symbol}/1M tokens`;
+};
+export const getFixedPriceSuffix = () => {
+  const { symbol } = getCurrencyConfig();
+  return `${symbol}/次`;
+};
+
+const getCurrencyRate = () => {
+  const { rate } = getCurrencyConfig();
+  return rate > 0 ? rate : 1;
+};
+const getCurrencySymbol = () => getCurrencyConfig().symbol;
 const EMPTY_CANDIDATE_MODEL_NAMES = [];
 
 const EMPTY_MODEL = {
@@ -123,6 +137,7 @@ const normalizeCompletionRatioMeta = (rawMeta) => {
 
 const buildModelState = (name, sourceMaps) => {
   const billingMode = sourceMaps.ModelBillingMode?.[name];
+  const rate = getCurrencyRate();
   if (billingMode === 'tiered_expr') {
     const fullBillingExpr = sourceMaps.ModelBillingExpr?.[name] || '';
     const { billingExpr, requestRuleExpr } =
@@ -150,54 +165,59 @@ const buildModelState = (name, sourceMaps) => {
   const audioCompletionRatio = toNumericString(
     sourceMaps.AudioCompletionRatio[name],
   );
-  const fixedPrice = toNumericString(sourceMaps.ModelPrice[name]);
-  const inputPrice = ratioToBasePrice(modelRatio);
-  const inputPriceNumber = toNumberOrNull(inputPrice);
-  const audioInputPrice =
-    inputPriceNumber !== null && hasValue(audioRatio)
-      ? formatNumber(inputPriceNumber * Number(audioRatio))
+  const fixedPriceUsd = toNumericString(sourceMaps.ModelPrice[name]);
+  const inputPriceUsd = ratioToBasePrice(modelRatio);
+  const inputPriceNumberUsd = toNumberOrNull(inputPriceUsd);
+  const audioInputPriceUsd =
+    inputPriceNumberUsd !== null && hasValue(audioRatio)
+      ? formatNumber(inputPriceNumberUsd * Number(audioRatio))
       : '';
 
-  return {
+  // 后端存储的是 USD，加载时乘以汇率转显示货币
+  const model = {
     ...EMPTY_MODEL,
     name,
-    billingMode: hasValue(fixedPrice) ? 'per-request' : 'per-token',
-    fixedPrice,
-    inputPrice,
+    billingMode: hasValue(fixedPriceUsd) ? 'per-request' : 'per-token',
+    fixedPrice: hasValue(fixedPriceUsd) ? formatNumber(Number(fixedPriceUsd) * rate) : '',
+    inputPrice: hasValue(inputPriceUsd) ? formatNumber(Number(inputPriceUsd) * rate) : '',
     completionRatioLocked: completionRatioMeta.locked,
     lockedCompletionRatio: completionRatioMeta.ratio,
     completionPrice:
-      inputPriceNumber !== null &&
+      inputPriceNumberUsd !== null &&
       hasValue(
         completionRatioMeta.locked
           ? completionRatioMeta.ratio
           : completionRatio,
       )
         ? formatNumber(
-            inputPriceNumber *
+            inputPriceNumberUsd *
               Number(
                 completionRatioMeta.locked
                   ? completionRatioMeta.ratio
                   : completionRatio,
-              ),
+              ) *
+              rate,
           )
         : '',
     cachePrice:
-      inputPriceNumber !== null && hasValue(cacheRatio)
-        ? formatNumber(inputPriceNumber * Number(cacheRatio))
+      inputPriceNumberUsd !== null && hasValue(cacheRatio)
+        ? formatNumber(inputPriceNumberUsd * Number(cacheRatio) * rate)
         : '',
     createCachePrice:
-      inputPriceNumber !== null && hasValue(createCacheRatio)
-        ? formatNumber(inputPriceNumber * Number(createCacheRatio))
+      inputPriceNumberUsd !== null && hasValue(createCacheRatio)
+        ? formatNumber(inputPriceNumberUsd * Number(createCacheRatio) * rate)
         : '',
     imagePrice:
-      inputPriceNumber !== null && hasValue(imageRatio)
-        ? formatNumber(inputPriceNumber * Number(imageRatio))
+      inputPriceNumberUsd !== null && hasValue(imageRatio)
+        ? formatNumber(inputPriceNumberUsd * Number(imageRatio) * rate)
         : '',
-    audioInputPrice,
+    audioInputPrice:
+      hasValue(audioInputPriceUsd) ? formatNumber(Number(audioInputPriceUsd) * rate) : '',
     audioOutputPrice:
-      toNumberOrNull(audioInputPrice) !== null && hasValue(audioCompletionRatio)
-        ? formatNumber(Number(audioInputPrice) * Number(audioCompletionRatio))
+      toNumberOrNull(audioInputPriceUsd) !== null && hasValue(audioCompletionRatio)
+        ? formatNumber(
+            Number(audioInputPriceUsd) * Number(audioCompletionRatio) * rate,
+          )
         : '',
     requestRuleExpr: '',
     rawRatios: {
@@ -210,7 +230,7 @@ const buildModelState = (name, sourceMaps) => {
       audioCompletionRatio,
     },
     hasConflict:
-      hasValue(fixedPrice) &&
+      hasValue(fixedPriceUsd) &&
       [
         modelRatio,
         completionRatio,
@@ -221,6 +241,8 @@ const buildModelState = (name, sourceMaps) => {
         audioCompletionRatio,
       ].some(hasValue),
   };
+
+  return model;
 };
 
 export const isBasePricingUnset = (model) =>
@@ -288,11 +310,32 @@ export const getModelWarnings = (model, t) => {
   return warnings;
 };
 
+/**
+ * 价格显示格式化：
+ * - 默认两位小数
+ * - 如果两位小数都是 0，则只显示整数
+ * - 空值 / 非法值 原样返回
+ * 用于文本渲染和 Input 受控显示（不改变 state，用户输入不受影响）
+ */
+export const formatPriceDisplay = (value) => {
+  if (!hasValue(value) && value !== 0) {
+    return value;
+  }
+  const num = Number(value);
+  if (!Number.isFinite(num)) return value;
+  const fixed2 = num.toFixed(2);
+  if (fixed2.endsWith('.00')) {
+    return num.toFixed(0);
+  }
+  return fixed2;
+};
+
 export const buildSummaryText = (model, t) => {
   const requestRuleSuffix =
     model.billingMode === 'tiered_expr' && model.requestRuleExpr
     ? `，${t('请求规则')}`
     : '';
+  const symbol = getCurrencySymbol();
   if (model.billingMode === 'tiered_expr') {
     const expr = model.billingExpr;
     if (!expr) return `${t('表达式计费')}${requestRuleSuffix}`;
@@ -304,7 +347,7 @@ export const buildSummaryText = (model, t) => {
   }
 
   if (model.billingMode === 'per-request' && hasValue(model.fixedPrice)) {
-    return `${t('按次')} $${model.fixedPrice} / ${t('次')}${requestRuleSuffix}`;
+    return `${t('按次')} ${symbol}${formatPriceDisplay(model.fixedPrice)} / ${t('次')}${requestRuleSuffix}`;
   }
 
   if (hasValue(model.inputPrice)) {
@@ -318,7 +361,7 @@ export const buildSummaryText = (model, t) => {
     ].filter(hasValue).length;
     const extraLabel =
       extraCount > 0 ? `，${t('额外价格项')} ${extraCount}` : '';
-    return `${t('输入')} $${model.inputPrice}${extraLabel}${requestRuleSuffix}`;
+    return `${t('输入')} ${symbol}${formatPriceDisplay(model.inputPrice)}${extraLabel}${requestRuleSuffix}`;
   }
 
   return `${t('未设置价格')}${requestRuleSuffix}`;
@@ -335,6 +378,14 @@ export const buildOptionalFieldToggles = (model) => ({
 });
 
 const serializeModel = (model, t) => {
+  const rate = getCurrencyRate();
+  const toUsd = (value) => {
+    if (value === null || value === undefined) return null;
+    const n = Number(value);
+    if (!Number.isFinite(n)) return null;
+    return n / rate;
+  };
+
   const result = {
     ModelPrice: null,
     ModelRatio: null,
@@ -348,18 +399,19 @@ const serializeModel = (model, t) => {
 
   if (model.billingMode === 'per-request') {
     if (hasValue(model.fixedPrice)) {
-      result.ModelPrice = toNormalizedNumber(model.fixedPrice);
+      result.ModelPrice = toNormalizedNumber(toUsd(model.fixedPrice));
     }
     return result;
   }
 
-  const inputPrice = toNumberOrNull(model.inputPrice);
-  const completionPrice = toNumberOrNull(model.completionPrice);
-  const cachePrice = toNumberOrNull(model.cachePrice);
-  const createCachePrice = toNumberOrNull(model.createCachePrice);
-  const imagePrice = toNumberOrNull(model.imagePrice);
-  const audioInputPrice = toNumberOrNull(model.audioInputPrice);
-  const audioOutputPrice = toNumberOrNull(model.audioOutputPrice);
+  // 组件内价格是显示货币(如 CNY)，先除以汇率还原为 USD 再计算倍率
+  const inputPrice = toUsd(toNumberOrNull(model.inputPrice));
+  const completionPrice = toUsd(toNumberOrNull(model.completionPrice));
+  const cachePrice = toUsd(toNumberOrNull(model.cachePrice));
+  const createCachePrice = toUsd(toNumberOrNull(model.createCachePrice));
+  const imagePrice = toUsd(toNumberOrNull(model.imagePrice));
+  const audioInputPrice = toUsd(toNumberOrNull(model.audioInputPrice));
+  const audioOutputPrice = toUsd(toNumberOrNull(model.audioOutputPrice));
 
   const hasDependentPrice = [
     completionPrice,
@@ -454,6 +506,11 @@ const serializeModel = (model, t) => {
 
 export const buildPreviewRows = (model, t) => {
   if (!model) return [];
+  const rate = getCurrencyRate();
+  const toUsdNumber = (value) => {
+    const n = toNumberOrNull(value);
+    return n !== null ? n / rate : null;
+  };
   const finalBillingExpr = combineBillingExpr(
     model.billingExpr,
     model.requestRuleExpr,
@@ -492,14 +549,17 @@ export const buildPreviewRows = (model, t) => {
       {
         key: 'ModelPrice',
         label: 'ModelPrice',
-        value: hasValue(model.fixedPrice) ? model.fixedPrice : t('空'),
+        value: hasValue(model.fixedPrice)
+          ? formatNumber(toUsdNumber(model.fixedPrice))
+          : t('空'),
       },
     ];
     return rows;
   }
 
-  const inputPrice = toNumberOrNull(model.inputPrice);
-  if (inputPrice === null) {
+  // 组件内价格是显示货币(如 CNY)，先除以汇率还原为 USD 再计算倍率
+  const inputPriceUsd = toUsdNumber(model.inputPrice);
+  if (inputPriceUsd === null) {
     const rows = [
       {
         key: 'ModelRatio',
@@ -554,64 +614,64 @@ export const buildPreviewRows = (model, t) => {
     return rows;
   }
 
-  const completionPrice = toNumberOrNull(model.completionPrice);
-  const cachePrice = toNumberOrNull(model.cachePrice);
-  const createCachePrice = toNumberOrNull(model.createCachePrice);
-  const imagePrice = toNumberOrNull(model.imagePrice);
-  const audioInputPrice = toNumberOrNull(model.audioInputPrice);
-  const audioOutputPrice = toNumberOrNull(model.audioOutputPrice);
+  const completionPriceUsd = toUsdNumber(model.completionPrice);
+  const cachePriceUsd = toUsdNumber(model.cachePrice);
+  const createCachePriceUsd = toUsdNumber(model.createCachePrice);
+  const imagePriceUsd = toUsdNumber(model.imagePrice);
+  const audioInputPriceUsd = toUsdNumber(model.audioInputPrice);
+  const audioOutputPriceUsd = toUsdNumber(model.audioOutputPrice);
 
   const rows = [
     {
       key: 'ModelRatio',
       label: 'ModelRatio',
-      value: formatNumber(inputPrice / 2),
+      value: formatNumber(inputPriceUsd / 2),
     },
     {
       key: 'CompletionRatio',
       label: 'CompletionRatio',
       value: model.completionRatioLocked
         ? `${model.lockedCompletionRatio || t('空')} (${t('后端固定')})`
-        : completionPrice !== null
-          ? formatNumber(completionPrice / inputPrice)
+        : completionPriceUsd !== null
+          ? formatNumber(completionPriceUsd / inputPriceUsd)
           : t('空'),
     },
     {
       key: 'CacheRatio',
       label: 'CacheRatio',
       value:
-        cachePrice !== null ? formatNumber(cachePrice / inputPrice) : t('空'),
+        cachePriceUsd !== null ? formatNumber(cachePriceUsd / inputPriceUsd) : t('空'),
     },
     {
       key: 'CreateCacheRatio',
       label: 'CreateCacheRatio',
       value:
-        createCachePrice !== null
-          ? formatNumber(createCachePrice / inputPrice)
+        createCachePriceUsd !== null
+          ? formatNumber(createCachePriceUsd / inputPriceUsd)
           : t('空'),
     },
     {
       key: 'ImageRatio',
       label: 'ImageRatio',
       value:
-        imagePrice !== null ? formatNumber(imagePrice / inputPrice) : t('空'),
+        imagePriceUsd !== null ? formatNumber(imagePriceUsd / inputPriceUsd) : t('空'),
     },
     {
       key: 'AudioRatio',
       label: 'AudioRatio',
       value:
-        audioInputPrice !== null
-          ? formatNumber(audioInputPrice / inputPrice)
+        audioInputPriceUsd !== null
+          ? formatNumber(audioInputPriceUsd / inputPriceUsd)
           : t('空'),
     },
     {
       key: 'AudioCompletionRatio',
       label: 'AudioCompletionRatio',
       value:
-        audioOutputPrice !== null &&
-        audioInputPrice !== null &&
-        audioInputPrice !== 0
-          ? formatNumber(audioOutputPrice / audioInputPrice)
+        audioOutputPriceUsd !== null &&
+        audioInputPriceUsd !== null &&
+        audioInputPriceUsd !== 0
+          ? formatNumber(audioOutputPriceUsd / audioInputPriceUsd)
           : t('空'),
     },
   ];

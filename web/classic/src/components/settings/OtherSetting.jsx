@@ -30,7 +30,6 @@ import {
 } from '@douyinfe/semi-ui';
 import {
   API,
-  confirmSwitchToDefaultFrontend,
   showError,
   showSuccess,
   timestamp2string,
@@ -88,7 +87,6 @@ const OtherSetting = () => {
     About: false,
     Footer: false,
     CheckUpdate: false,
-    FrontendTheme: false,
   });
   const handleInputChange = async (value, e) => {
     const name = e.target.id;
@@ -284,17 +282,6 @@ const OtherSetting = () => {
         CheckUpdate: false,
       }));
     }
-  };
-
-  const switchToDefaultFrontend = () => {
-    confirmSwitchToDefaultFrontend(t, {
-      onLoadingChange: (loading) => {
-        setLoadingInput((loadingInput) => ({
-          ...loadingInput,
-          FrontendTheme: loading,
-        }));
-      },
-    });
   };
 
   const getOptions = async () => {

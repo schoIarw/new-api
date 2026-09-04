@@ -588,20 +588,23 @@ export const getLogsColumns = ({
       title: t('用户'),
       dataIndex: 'username',
       render: (text, record, index) => {
+        const rawAccount = record.account;
+        const fullDisplay = typeof rawAccount === 'string' && rawAccount.length > 0 ? rawAccount : '';
+        const truncatedDisplay = fullDisplay.length > 11 ? fullDisplay.slice(0, 11) + '…' : fullDisplay;
         return isAdminUser ? (
-          <div>
+          <div title={fullDisplay || undefined}>
             <Avatar
               size='extra-small'
-              color={stringToColor(text)}
+              color={stringToColor(fullDisplay)}
               style={{ marginRight: 4 }}
               onClick={(event) => {
                 event.stopPropagation();
                 showUserInfoFunc(record.user_id);
               }}
             >
-              {typeof text === 'string' && text.slice(0, 1)}
+              {fullDisplay && fullDisplay.slice(0, 1)}
             </Avatar>
-            {text}
+            {truncatedDisplay}
           </div>
         ) : (
           <></>

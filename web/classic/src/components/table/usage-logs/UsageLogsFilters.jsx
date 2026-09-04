@@ -166,7 +166,7 @@ const LogsFilters = ({
               onClick={() => {
                 if (formApi) {
                   formApi.reset();
-                  setLogType(0);
+                  setLogType(2);
                   setTimeout(() => {
                     refresh();
                   }, 100);

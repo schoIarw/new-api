@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
@@ -59,12 +60,15 @@ func SetRelayRouter(router *gin.Engine) {
 		})
 	}
 
-	playgroundRouter := router.Group("/pg")
-	playgroundRouter.Use(middleware.RouteTag("relay"))
-	playgroundRouter.Use(middleware.SystemPerformanceCheck())
-	playgroundRouter.Use(middleware.UserAuth(), middleware.Distribute())
-	{
-		playgroundRouter.POST("/chat/completions", controller.Playground)
+	// playground 走 session 鉴权，属控制台功能，网关模式下不注册
+	if !common.RelayOnly {
+		playgroundRouter := router.Group("/pg")
+		playgroundRouter.Use(middleware.RouteTag("relay"))
+		playgroundRouter.Use(middleware.SystemPerformanceCheck())
+		playgroundRouter.Use(middleware.UserAuth(), middleware.Distribute())
+		{
+			playgroundRouter.POST("/chat/completions", controller.Playground)
+		}
 	}
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RouteTag("relay"))

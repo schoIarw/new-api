@@ -525,7 +525,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
                 : { padding: '4px 12px', width: '100%' }
             }
           >
-            {!collapsed ? t('收起侧边栏') : null}
           </Button>
         </SkeletonWrapper>
       </div>

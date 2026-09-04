@@ -1066,6 +1066,13 @@ html.dark .with-pastel-balls::before {
   border-radius: 10px !important;
 }
 
+/* 全局按钮文字：取消粗体，字号与同级正文一致 */
+.semi-button .semi-button-content {
+  font-weight: 400 !important;
+  font-size: 14px !important;
+  line-height: 1.5;
+}
+
 @keyframes slideInLeft {
   from {
     transform: translateX(-100%);

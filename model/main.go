@@ -314,10 +314,12 @@ func migrateDB() error {
 			return err
 		}
 	}
-	// Backfill materialized summary tables from historical logs
-	backfillTokenDailySummaries()
+	// 注释掉：账单功能写入两张汇总表
+// Backfill materialized summary tables from historical logs
+//backfillTokenDailySummaries()
+	// 注释掉：账单功能写入每30秒逐行写两张汇总表
 	// Start background flusher for daily summary cache
-	StartTokenDailySummaryFlusher()
+	//StartTokenDailySummaryFlusher()
 	return nil
 }
 

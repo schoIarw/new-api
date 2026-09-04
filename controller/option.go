@@ -216,13 +216,12 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	case "theme.frontend":
-		if option.Value != "default" && option.Value != "classic" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无效的主题值，可选值：default（新版前端）、classic（经典前端）",
-			})
-			return
-		}
+		// Theme switching is disabled; the frontend is locked to "classic".
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "主题切换已被禁用，当前前端固定为经典前端",
+		})
+		return
 	case "GroupRatio":
 		err = ratio_setting.CheckGroupRatio(option.Value.(string))
 		if err != nil {

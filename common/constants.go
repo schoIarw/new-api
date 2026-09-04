@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	//"os"
 	//"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -30,30 +29,17 @@ func GetTheme() string {
 }
 
 // SetTheme updates the frontend theme atomically.
-// Only "default" and "classic" are accepted; other values are silently ignored.
+// Theme switching is disabled; the frontend is locked to "classic".
+// Any value passed is silently ignored.
 func SetTheme(t string) {
-	if t == "default" || t == "classic" {
-		themeValue.Store(t)
-	}
+	themeValue.Store("classic")
 }
 
-// ThemeAwarePath rewrites legacy /console/* paths to the default-theme
-// equivalents when the active theme is "default".  For "classic" (or any
-// other theme) the path is returned unchanged.  The function only touches
-// known prefixes so it is safe to call with arbitrary suffixes and query
-// strings.
+// ThemeAwarePath is a no-op since the project is permanently locked to
+// the classic frontend.  The default (new) frontend code has been removed;
+// this function is retained only to satisfy external callers that check a
+// condition which is now always false and return the suffix unchanged.
 func ThemeAwarePath(suffix string) string {
-	if GetTheme() != "default" {
-		return suffix
-	}
-	switch {
-	case strings.HasPrefix(suffix, "/console/topup"):
-		return strings.Replace(suffix, "/console/topup", "/wallet", 1)
-	case strings.HasPrefix(suffix, "/console/log"):
-		return strings.Replace(suffix, "/console/log", "/usage-logs", 1)
-	case strings.HasPrefix(suffix, "/console/personal"):
-		return strings.Replace(suffix, "/console/personal", "/profile", 1)
-	}
 	return suffix
 }
 
@@ -159,6 +145,10 @@ var RetryTimes = 0
 //var RootUserEmail = ""
 
 var IsMasterNode bool
+
+// RelayOnly 网关模式：仅挂载 relay 路由与旧版 billing 兼容路由，
+// 不挂载 /api 控制台路由与 Web 前端，管理操作由独立管理容器承载。
+var RelayOnly bool
 
 const (
 	NodeNameSourceManual   = "manual"
