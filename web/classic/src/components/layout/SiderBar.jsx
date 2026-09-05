@@ -39,6 +39,9 @@ const routerMap = {
   user: '/console/user',
   subscription: '/console/subscription',
   log: '/console/log',
+  'rate-limit': '/console/rate-limit',
+  'model-dashboard': '/console/model-dashboard',
+  'performance-dashboard': '/console/performance-dashboard',
   midjourney: '/console/midjourney',
   setting: '/console/setting',
   about: '/about',
@@ -78,6 +81,24 @@ const SiderBar = ({ onNavigate = () => {} }) => {
           localStorage.getItem('enable_data_export') === 'true'
             ? ''
             : 'tableHiddle',
+      },
+      {
+        text: t('模型看板'),
+        itemKey: 'model-dashboard',
+        to: '/model-dashboard',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('限流看板'),
+        itemKey: 'rate-limit',
+        to: '/rate-limit',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('性能看板'),
+        itemKey: 'performance-dashboard',
+        to: '/performance-dashboard',
+        className: isAdmin() ? '' : 'tableHiddle',
       },
       {
         text: t('令牌管理'),

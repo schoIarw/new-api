@@ -584,6 +584,161 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	return stat, nil
 }
 
+// RateLimitGroupStat 限流看板中按 TokenName + Account 聚合的请求数统计
+type RateLimitGroupStat struct {
+	TokenName string `json:"token_name" gorm:"column:token_name"`
+	Account   string `json:"account" gorm:"column:account"`
+	Count     int64  `json:"count" gorm:"column:count"`
+}
+
+// GetRateLimitGroupStats 按 token_name + account 分组统计指定时间窗口内的消费日志条数。
+// 仅统计 type=LogTypeConsume（成功消费），失败请求不会写入该类型。
+func GetRateLimitGroupStats(startTimestamp, endTimestamp int64) ([]RateLimitGroupStat, error) {
+	var stats []RateLimitGroupStat
+	err := LOG_DB.Table("logs").
+		Select("token_name, account, count(*) as count").
+		Where("type = ?", LogTypeConsume).
+		Where("created_at >= ?", startTimestamp).
+		Where("created_at <= ?", endTimestamp).
+		Group("token_name, account").
+		Order("count DESC").
+		Scan(&stats).Error
+	if err != nil {
+		common.SysError("failed to query rate limit group stats: " + err.Error())
+		return nil, errors.New("查询限流统计数据失败")
+	}
+	return stats, nil
+}
+
+// ModelBucketStat 模型看板中按 5 分钟桶 + token_name + model_name 聚合的统计
+type ModelBucketStat struct {
+	TokenName        string `json:"token_name" gorm:"column:token_name"`
+	ModelName        string `json:"model_name" gorm:"column:model_name"`
+	Bucket           int64  `json:"bucket" gorm:"column:bucket"`
+	Count            int64  `json:"count" gorm:"column:count"`
+	PromptTokens     int64  `json:"prompt_tokens" gorm:"column:prompt_tokens"`
+	CompletionTokens int64  `json:"completion_tokens" gorm:"column:completion_tokens"`
+}
+
+// GetModelDashboardStats 按 5 分钟粒度分组统计消费日志。
+// ignoreKey=true 时仅按 model_name 分组（token_name 返回空串）。
+func GetModelDashboardStats(startTimestamp, endTimestamp int64, ignoreKey bool) ([]ModelBucketStat, error) {
+	var stats []ModelBucketStat
+	var tokenNameCol, groupCols string
+	if ignoreKey {
+		tokenNameCol = "'' as token_name"
+		groupCols = "model_name, bucket"
+	} else {
+		tokenNameCol = "token_name"
+		groupCols = "token_name, model_name, bucket"
+	}
+	err := LOG_DB.Table("logs").
+		Select(tokenNameCol + ", model_name, floor(created_at / 300) * 300 as bucket, count(*) as count, ifnull(sum(prompt_tokens),0) as prompt_tokens, ifnull(sum(completion_tokens),0) as completion_tokens").
+		Where("type = ?", LogTypeConsume).
+		Where("created_at >= ?", startTimestamp).
+		Where("created_at <= ?", endTimestamp).
+		Group(groupCols).
+		Order("bucket ASC").
+		Scan(&stats).Error
+	if err != nil {
+		common.SysError("failed to query model dashboard stats: " + err.Error())
+		return nil, errors.New("查询模型看板统计数据失败")
+	}
+	return stats, nil
+}
+
+// PerformanceBucketStat 性能看板按 5 分钟桶 + token_name + model_name 聚合的统计。
+// FRT 仅对 is_stream=true 的记录统计；token 生成速率 = completion_tokens / (use_time - frt/1000)。
+type PerformanceBucketStat struct {
+	TokenName        string  `json:"token_name" gorm:"column:token_name"`
+	ModelName        string  `json:"model_name" gorm:"column:model_name"`
+	Bucket           int64   `json:"bucket" gorm:"column:bucket"`
+	Count            int64   `json:"count" gorm:"column:count"`
+	PromptTokens     int64   `json:"prompt_tokens" gorm:"column:prompt_tokens"`
+	CompletionTokens int64   `json:"completion_tokens" gorm:"column:completion_tokens"`
+	AvgFrt           float64 `json:"avg_frt" gorm:"column:avg_frt"`
+	MinFrt           float64 `json:"min_frt" gorm:"column:min_frt"`
+	MaxFrt           float64 `json:"max_frt" gorm:"column:max_frt"`
+	AvgTokenRate     float64 `json:"avg_token_rate" gorm:"column:avg_token_rate"`
+	MinTokenRate     float64 `json:"min_token_rate" gorm:"column:min_token_rate"`
+	MaxTokenRate     float64 `json:"max_token_rate" gorm:"column:max_token_rate"`
+}
+
+// frtExpr 返回从 logs.other JSON 中提取 frt（毫秒）的方言表达式。
+func frtExpr() string {
+	switch common.LogDatabaseType() {
+	case common.DatabaseTypePostgreSQL:
+		return "(other::jsonb->>'frt')::float"
+	case common.DatabaseTypeMySQL:
+		return "CAST(JSON_UNQUOTE(JSON_EXTRACT(other, '$.frt')) AS DECIMAL(20,3))"
+	default:
+		return "json_extract(other, '$.frt')"
+	}
+}
+
+// logTrueVal 返回日志库的布尔真值表达式。
+func logTrueVal() string {
+	if common.UsingLogDatabase(common.DatabaseTypePostgreSQL) {
+		return "true"
+	}
+	return "1"
+}
+
+// GetPerformanceDashboardStats 按 5 分钟粒度分组统计性能指标。
+// ignoreKey=true 时仅按 model_name 分组（token_name 返回空串）。
+func GetPerformanceDashboardStats(startTimestamp, endTimestamp int64, ignoreKey bool) ([]PerformanceBucketStat, error) {
+	var stats []PerformanceBucketStat
+	frt := frtExpr()
+	trueVal := logTrueVal()
+	// token 生成速率分母：流式用 use_time - frt/1000（首字节后生成耗时），非流式用 use_time
+	genSec := fmt.Sprintf(
+		"CASE WHEN is_stream = %s AND %s >= 0 THEN use_time - %s / 1000.0 ELSE use_time END",
+		trueVal, frt, frt,
+	)
+	tokenRate := fmt.Sprintf(
+		"CASE WHEN completion_tokens > 0 AND %s > 0 THEN completion_tokens / %s END",
+		genSec, genSec,
+	)
+	frtCase := fmt.Sprintf("CASE WHEN is_stream = %s AND %s >= 0 THEN %s END", trueVal, frt, frt)
+
+	var tokenNameCol, groupCols string
+	if ignoreKey {
+		tokenNameCol = "'' as token_name"
+		groupCols = "model_name, bucket"
+	} else {
+		tokenNameCol = "token_name"
+		groupCols = "token_name, model_name, bucket"
+	}
+
+	query := fmt.Sprintf(
+		`%s, model_name, floor(created_at / 300) * 300 as bucket,
+		count(*) as count,
+		COALESCE(sum(prompt_tokens), 0) as prompt_tokens,
+		COALESCE(sum(completion_tokens), 0) as completion_tokens,
+		COALESCE(AVG(%s), 0) as avg_frt,
+		COALESCE(MIN(%s), 0) as min_frt,
+		COALESCE(MAX(%s), 0) as max_frt,
+		COALESCE(AVG(%s), 0) as avg_token_rate,
+		COALESCE(MIN(%s), 0) as min_token_rate,
+		COALESCE(MAX(%s), 0) as max_token_rate`,
+		tokenNameCol, frtCase, frtCase, frtCase, tokenRate, tokenRate, tokenRate,
+	)
+
+	err := LOG_DB.Table("logs").
+		Select(query).
+		Where("type = ?", LogTypeConsume).
+		Where("created_at >= ?", startTimestamp).
+		Where("created_at <= ?", endTimestamp).
+		Group(groupCols).
+		Order("bucket ASC").
+		Scan(&stats).Error
+	if err != nil {
+		common.SysError("failed to query performance dashboard stats: " + err.Error())
+		return nil, errors.New("查询性能看板统计数据失败")
+	}
+	return stats, nil
+}
+
 func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string) (token int) {
 	tx := LOG_DB.Table("logs").Select("ifnull(sum(prompt_tokens),0) + ifnull(sum(completion_tokens),0)")
 	if username != "" {

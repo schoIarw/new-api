@@ -80,6 +80,9 @@ import {
   Package,
   Server,
   CalendarClock,
+  Gauge,
+  LineChart,
+  Activity,
 } from 'lucide-react';
 import {
   SiAtlassian,
@@ -151,6 +154,12 @@ export function getLucideIcon(key, selected = false) {
       return <CalendarClock {...commonProps} color={iconColor} />;
     case 'setting':
       return <Settings {...commonProps} color={iconColor} />;
+    case 'rate-limit':
+      return <Gauge {...commonProps} color={iconColor} />;
+    case 'model-dashboard':
+      return <LineChart {...commonProps} color={iconColor} />;
+    case 'performance-dashboard':
+      return <Activity {...commonProps} color={iconColor} />;
     default:
       return <CircleUser {...commonProps} color={iconColor} />;
   }

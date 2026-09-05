@@ -260,6 +260,15 @@ func ModelRequestRateLimit() func(c *gin.Context) {
 			totalMaxCount = groupTotalCount
 			successMaxCount = groupSuccessCount
 		}
+
+		// 按 token_name 限流：ModelRequestRateLimitGroup 中的 key 也可以是 token 名称
+		tokenName := c.GetString("token_name")
+		if tokenName != "" {
+			if tokenTotalCount, tokenSuccessCount, found := setting.GetGroupRateLimit(tokenName); found {
+				totalMaxCount = tokenTotalCount
+				successMaxCount = tokenSuccessCount
+			}
+		}
 		userId := strconv.Itoa(c.GetInt("id"))
 
 		logger.LogInfo(c,

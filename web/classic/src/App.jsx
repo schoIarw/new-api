@@ -36,6 +36,9 @@ import Token from './pages/Token';
 import Redemption from './pages/Redemption';
 import TopUp from './pages/TopUp';
 import Log from './pages/Log';
+import RateLimitDashboard from './pages/RateLimitDashboard';
+import ModelDashboard from './pages/ModelDashboard';
+import PerformanceDashboard from './pages/PerformanceDashboard';
 import Chat from './pages/Chat';
 import Chat2Link from './pages/Chat2Link';
 import MjProxy from './pages/Midjourney';
@@ -282,6 +285,30 @@ function App() {
           element={
             <PrivateRoute>
               <Log />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/rate-limit'
+          element={
+            <PrivateRoute>
+              <RateLimitDashboard />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/model-dashboard'
+          element={
+            <PrivateRoute>
+              <ModelDashboard />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/performance-dashboard'
+          element={
+            <PrivateRoute>
+              <PerformanceDashboard />
             </PrivateRoute>
           }
         />

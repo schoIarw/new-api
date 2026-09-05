@@ -34,6 +34,9 @@ export const DEFAULT_ADMIN_CONFIG = {
   console: {
     enabled: true,
     detail: true,
+    'model-dashboard': true,
+    'rate-limit': true,
+    'performance-dashboard': true,
     token: true,
     log: true,
     midjourney: true,
