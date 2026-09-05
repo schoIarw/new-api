@@ -31,6 +31,8 @@ services:
       - BATCH_UPDATE_ENABLED=true
       - NODE_NAME=admin-1
       - TZ=Asia/Shanghai
+      # 防御 Go runtime use-after-free / zombie span：关闭默认 go-redis pipeline coalesce
+      - GODEBUG=gccheckmark=1
     extra_hosts:
       - "host.docker.internal:host-gateway"  # Linux 下解析到宿主机，访问 mysql8 的 3306 端口
     depends_on:
@@ -61,6 +63,7 @@ services:
       - BATCH_UPDATE_ENABLED=true  # 网关产生扣费，必须开启
       - NODE_NAME=gateway-1
       - TZ=Asia/Shanghai
+      - GODEBUG=gccheckmark=1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

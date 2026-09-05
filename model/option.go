@@ -15,6 +15,18 @@ import (
 	"gorm.io/gorm"
 )
 
+// sanitizeOptionValue 在写库前清洗 option value：
+//   - 任何空字符串（对应 map/slice/ptr 字段的空值）一律改为 "{}"，
+//     避免下次 json.Unmarshal("") 触发 "unexpected end of JSON input"
+//     并在每 60s 的 SyncOptions 中反复打印告警噪音
+//   - 其它值原样返回，string/scalar 字段没有 JSON 约束
+func sanitizeOptionValue(key, value string) string {
+	if value == "" {
+		return "{}"
+	}
+	return value
+}
+
 type Option struct {
 	Key   string `json:"key" gorm:"primaryKey"`
 	Value string `json:"value"`
@@ -235,7 +247,9 @@ func UpdateOptionsBulk(values map[string]string) error {
 			if err := tx.FirstOrCreate(&option, Option{Key: k}).Error; err != nil {
 				return err
 			}
-			option.Value = v
+			sanitized := sanitizeOptionValue(k, v)
+			option.Value = sanitized
+			values[k] = sanitized
 			if err := tx.Save(&option).Error; err != nil {
 				return err
 			}

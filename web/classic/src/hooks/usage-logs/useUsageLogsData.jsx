@@ -102,7 +102,7 @@ export const useLogsData = () => {
     group: '',
     request_id: '',
     dateRange: [
-      timestamp2string(getTodayStartTimestamp()),
+      timestamp2string(getTodayStartTimestamp() - 6 * 86400),
       timestamp2string(now.getTime() / 1000 + 3600),
     ],
     logType: '2',
@@ -236,8 +236,10 @@ export const useLogsData = () => {
   const getFormValues = () => {
     const formValues = formApi ? formApi.getValues() : {};
 
-    let start_timestamp = timestamp2string(getTodayStartTimestamp());
-    let end_timestamp = timestamp2string(now.getTime() / 1000 + 3600);
+    // 当 formApi 尚未就绪时（首次加载），直接使用 formInitValues 中的日期范围，
+    // 避免 fallback 到今天导致历史日志被过滤掉
+    let start_timestamp = formInitValues.dateRange[0];
+    let end_timestamp = formInitValues.dateRange[1];
 
     if (
       formValues.dateRange &&

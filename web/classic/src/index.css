@@ -617,6 +617,13 @@ html.dark .sbg-variant-green {
   background: transparent;
 }
 
+/* 表格自适应宽度：列少时撑满容器，列多时横向滚动 */
+.semi-table-wrapper .semi-table {
+  width: 100% !important;
+  min-width: max-content;
+  table-layout: auto !important;
+}
+
 /* 侧边抽屉滚动条样式 */
 .semi-sidesheet-body::-webkit-scrollbar {
   width: 6px;
