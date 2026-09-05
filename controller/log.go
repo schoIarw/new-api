@@ -216,6 +216,14 @@ func GetRateLimitDashboard(c *gin.Context) {
 	var periodStats []RateLimitPeriodData
 
 	if startTS > 0 && endTS > 0 {
+		// 历史模式：最多48小时
+		if endTS-startTS > 48*3600 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "历史查询时间范围不能超过48小时",
+			})
+			return
+		}
 		// 历史模式：按时间段切分为限流周期
 		periodStart := (startTS / durationSec) * durationSec
 		idx := int64(0)
@@ -271,6 +279,7 @@ func GetRateLimitDashboard(c *gin.Context) {
 // GetModelDashboard 模型看板接口
 // 实时模式：hours=N（查询最近 N 小时，5 分钟粒度），自动刷新
 // 历史模式：start_timestamp + end_timestamp（按时间段查询，5 分钟粒度）
+// 实时最多4小时，历史最多48小时
 func GetModelDashboard(c *gin.Context) {
 	now := time.Now().Unix()
 	var startTimestamp, endTimestamp int64
@@ -279,15 +288,22 @@ func GetModelDashboard(c *gin.Context) {
 	endTS, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 
 	if startTS > 0 && endTS > 0 {
+		if endTS-startTS > 48*3600 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "历史查询时间范围不能超过48小时",
+			})
+			return
+		}
 		startTimestamp = startTS
 		endTimestamp = endTS
 	} else {
 		hours, _ := strconv.Atoi(c.Query("hours"))
 		if hours <= 0 {
-			hours = 8
+			hours = 1
 		}
-		if hours > 96 {
-			hours = 96
+		if hours > 4 {
+			hours = 4
 		}
 		startTimestamp = now - int64(hours)*3600
 		endTimestamp = now
@@ -320,15 +336,22 @@ func GetPerformanceDashboard(c *gin.Context) {
 	endTS, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 
 	if startTS > 0 && endTS > 0 {
+		if endTS-startTS > 48*3600 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "历史查询时间范围不能超过48小时",
+			})
+			return
+		}
 		startTimestamp = startTS
 		endTimestamp = endTS
 	} else {
 		hours, _ := strconv.Atoi(c.Query("hours"))
 		if hours <= 0 {
-			hours = 8
+			hours = 1
 		}
-		if hours > 96 {
-			hours = 96
+		if hours > 4 {
+			hours = 4
 		}
 		startTimestamp = now - int64(hours)*3600
 		endTimestamp = now

@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useContext } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { getLucideIcon } from '../../helpers/render';
@@ -26,6 +26,7 @@ import { useSidebarCollapsed } from '../../hooks/common/useSidebarCollapsed';
 import { useSidebar } from '../../hooks/common/useSidebar';
 import { useMinimumLoadingTime } from '../../hooks/common/useMinimumLoadingTime';
 import { isAdmin, isRoot, showError } from '../../helpers';
+import { StatusContext } from '../../context/Status';
 import SkeletonWrapper from './components/SkeletonWrapper';
 
 import { Nav, Divider, Button } from '@douyinfe/semi-ui';
@@ -62,6 +63,11 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     hasSectionVisibleModules,
     loading: sidebarLoading,
   } = useSidebar();
+  const [statusState] = useContext(StatusContext);
+
+  const modelDashboardEnabled = statusState?.status?.model_dashboard_enabled !== false;
+  const rateLimitDashboardEnabled = statusState?.status?.rate_limit_dashboard_enabled !== false;
+  const performanceDashboardEnabled = statusState?.status?.performance_dashboard_enabled !== false;
 
   const showSkeleton = useMinimumLoadingTime(sidebarLoading, 200);
 
@@ -86,19 +92,19 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('模型看板'),
         itemKey: 'model-dashboard',
         to: '/model-dashboard',
-        className: isAdmin() ? '' : 'tableHiddle',
+        className: isAdmin() && modelDashboardEnabled ? '' : 'tableHiddle',
       },
       {
         text: t('限流看板'),
         itemKey: 'rate-limit',
         to: '/rate-limit',
-        className: isAdmin() ? '' : 'tableHiddle',
+        className: isAdmin() && rateLimitDashboardEnabled ? '' : 'tableHiddle',
       },
       {
         text: t('性能看板'),
         itemKey: 'performance-dashboard',
         to: '/performance-dashboard',
-        className: isAdmin() ? '' : 'tableHiddle',
+        className: isAdmin() && performanceDashboardEnabled ? '' : 'tableHiddle',
       },
       {
         text: t('令牌管理'),

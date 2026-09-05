@@ -27,6 +27,7 @@ import SettingsLog from '../../pages/Setting/Operation/SettingsLog';
 import SettingsMonitoring from '../../pages/Setting/Operation/SettingsMonitoring';
 import SettingsCreditLimit from '../../pages/Setting/Operation/SettingsCreditLimit';
 import SettingsCheckin from '../../pages/Setting/Operation/SettingsCheckin';
+import SettingsDashboard from '../../pages/Setting/Operation/SettingsDashboard';
 import { API, showError, toBoolean } from '../../helpers';
 
 const OperationSetting = () => {
@@ -78,6 +79,11 @@ const OperationSetting = () => {
     'checkin_setting.enabled': false,
     'checkin_setting.min_quota': 1000,
     'checkin_setting.max_quota': 10000,
+
+    /* 看板设置 */
+    'dashboard_setting.model_dashboard_enabled': true,
+    'dashboard_setting.rate_limit_dashboard_enabled': true,
+    'dashboard_setting.performance_dashboard_enabled': true,
 
     /* 令牌设置 */
     'token_setting.max_user_tokens': 1000,
@@ -153,6 +159,10 @@ const OperationSetting = () => {
         {/* 签到设置 */}
         <Card style={{ marginTop: '10px' }}>
           <SettingsCheckin options={inputs} refresh={onRefresh} />
+        </Card>
+        {/* 看板设置 */}
+        <Card style={{ marginTop: '10px' }}>
+          <SettingsDashboard options={inputs} refresh={onRefresh} />
         </Card>
       </Spin>
     </>

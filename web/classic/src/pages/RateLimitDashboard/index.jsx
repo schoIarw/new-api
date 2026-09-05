@@ -32,17 +32,24 @@ const REFRESH_INTERVAL_MS = 10000;
 const COLOR_RATE_LIMITED = '#ef4444';
 const COLOR_NORMAL = '#3b82f6';
 
-// 实时模式周期选项：覆盖 1/2/4/8 小时的周期数
+// 实时模式周期选项：覆盖 1/2/4 小时的周期数
 function buildPeriodOptions(durationMinutes) {
   const dm = durationMinutes > 0 ? durationMinutes : 10;
   const periodsPerHour = Math.max(1, Math.floor(60 / dm));
-  const hourMultipliers = [1, 2, 4, 8];
-  return hourMultipliers.map((h, idx) => {
+  const hourMultipliers = [1, 2, 4];
+  return hourMultipliers.map((h) => {
     const value = periodsPerHour * h;
-    const label = idx === 0 ? `最近 ${h} 小时` : `最近 ${h} 小时`;
-    return { label, value };
+    return { label: `最近 ${h} 小时`, value };
   });
 }
+
+// 刷新频率选项
+const REFRESH_OPTIONS = [
+  { label: '低 (1分)', value: 60 },
+  { label: '中 (30秒)', value: 30 },
+  { label: '高 (10秒)', value: 10 },
+];
+const DEFAULT_REFRESH = 30;
 
 // 周期标签：实时模式显示"前 N 周期"，历史模式显示时间范围
 function periodLabel(periodIndex, durationMinutes, startTimestamp, isHistorical) {
@@ -73,6 +80,7 @@ const RateLimitDashboard = () => {
   const [initialized, setInitialized] = useState(false);
   const [filterKey, setFilterKey] = useState('');
   const [filterAccount, setFilterAccount] = useState('');
+  const [refreshInterval, setRefreshInterval] = useState(DEFAULT_REFRESH);
   const refreshTimerRef = useRef(null);
 
   const isHistorical = mode === 'historical';
@@ -89,9 +97,10 @@ const RateLimitDashboard = () => {
 
   const filteredChartData = useMemo(() => {
     const kw = filterAccount.trim().toLowerCase();
+    const useAccountFilter = kw.length >= 7;
     return chartData.filter((r) => {
       if (filterKey && r.tokenName !== filterKey) return false;
-      if (kw && !(r.account || '').toLowerCase().includes(kw)) return false;
+      if (useAccountFilter && !(r.account || '').toLowerCase().includes(kw)) return false;
       return true;
     });
   }, [chartData, filterKey, filterAccount]);
@@ -117,9 +126,15 @@ const RateLimitDashboard = () => {
     try {
       let params = {};
       if (isHistorical && dateRange && dateRange.length === 2) {
+        const startTs = Math.floor(dateRange[0].getTime() / 1000);
+        const endTs = Math.floor(dateRange[1].getTime() / 1000);
+        if (endTs - startTs > 48 * 3600) {
+          showError('历史查询时间范围不能超过48小时');
+          return;
+        }
         params = {
-          start_timestamp: Math.floor(dateRange[0].getTime() / 1000),
-          end_timestamp: Math.floor(dateRange[1].getTime() / 1000),
+          start_timestamp: startTs,
+          end_timestamp: endTs,
         };
       } else {
         const p = Math.max(1, periods);
@@ -204,14 +219,14 @@ const RateLimitDashboard = () => {
     if (!isHistorical) {
       refreshTimerRef.current = setInterval(() => {
         loadData();
-      }, REFRESH_INTERVAL_MS);
+      }, refreshInterval * 1000);
     }
     return () => {
       if (refreshTimerRef.current) {
         clearInterval(refreshTimerRef.current);
       }
     };
-  }, [isHistorical, loadData]);
+  }, [isHistorical, loadData, refreshInterval]);
 
   const spec = useMemo(() => {
     const colorMap = {};
@@ -339,12 +354,20 @@ const RateLimitDashboard = () => {
                     style={{ width: 320 }}
                   />
                 ) : (
-                  <Select
-                    value={periods}
-                    onChange={(v) => setPeriods(v)}
-                    optionList={periodOptions}
-                    style={{ width: 140 }}
-                  />
+                  <>
+                    <Select
+                      value={periods}
+                      onChange={(v) => setPeriods(v)}
+                      optionList={periodOptions}
+                      style={{ width: 140 }}
+                    />
+                    <Select
+                      value={refreshInterval}
+                      onChange={(v) => setRefreshInterval(v)}
+                      optionList={REFRESH_OPTIONS}
+                      style={{ width: 130 }}
+                    />
+                  </>
                 )}
                 {isHistorical ? (
                   <Tag color='grey' size='small'>历史数据</Tag>
@@ -365,9 +388,9 @@ const RateLimitDashboard = () => {
               <Input
                 value={filterAccount}
                 onChange={(v) => setFilterAccount(v)}
-                placeholder='Account 模糊匹配'
+                placeholder='Account 模糊匹配（至少7位）'
                 showClear
-                style={{ width: 200 }}
+                style={{ width: 220 }}
               />
               {(filterKey || filterAccount) && (
                 <Tag color='light-blue' size='small'>

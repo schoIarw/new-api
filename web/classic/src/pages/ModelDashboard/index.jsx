@@ -30,11 +30,19 @@ const CHART_CONFIG = { mode: 'desktop-browser' };
 const REFRESH_INTERVAL_MS = 10000; // 自动刷新间隔
 
 // 实时模式时间范围下拉选项（小时）
-const HOUR_OPTIONS = [1, 2, 4, 8, 24].map((h) => ({
+const HOUR_OPTIONS = [1, 2, 4].map((h) => ({
   label: `最近 ${h} 小时`,
   value: h,
 }));
 const DEFAULT_HOURS = 1;
+
+// 刷新频率选项
+const REFRESH_OPTIONS = [
+  { label: '低 (1分)', value: 60 },
+  { label: '中 (30秒)', value: 30 },
+  { label: '高 (10秒)', value: 10 },
+];
+const DEFAULT_REFRESH = 30;
 
 // 指标类型
 const METRICS = [
@@ -65,6 +73,7 @@ const ModelDashboard = () => {
   const [metric, setMetric] = useState('count');
   const [filterKey, setFilterKey] = useState('__ignore__'); // '__ignore__' = 忽略Key
   const [filterModel, setFilterModel] = useState('');
+  const [refreshInterval, setRefreshInterval] = useState(DEFAULT_REFRESH);
   const refreshTimerRef = useRef(null);
 
   // 初始化 Semi 主题
@@ -81,9 +90,15 @@ const ModelDashboard = () => {
     try {
       let params = {};
       if (isHistorical && dateRange && dateRange.length === 2) {
+        const startTs = Math.floor(dateRange[0].getTime() / 1000);
+        const endTs = Math.floor(dateRange[1].getTime() / 1000);
+        if (endTs - startTs > 48 * 3600) {
+          showError('历史查询时间范围不能超过48小时');
+          return;
+        }
         params = {
-          start_timestamp: Math.floor(dateRange[0].getTime() / 1000),
-          end_timestamp: Math.floor(dateRange[1].getTime() / 1000),
+          start_timestamp: startTs,
+          end_timestamp: endTs,
         };
       } else {
         params = { hours };
@@ -116,14 +131,14 @@ const ModelDashboard = () => {
     if (!isHistorical) {
       refreshTimerRef.current = setInterval(() => {
         loadData();
-      }, REFRESH_INTERVAL_MS);
+      }, refreshInterval * 1000);
     }
     return () => {
       if (refreshTimerRef.current) {
         clearInterval(refreshTimerRef.current);
       }
     };
-  }, [isHistorical, loadData]);
+  }, [isHistorical, loadData, refreshInterval]);
 
   // 筛选后的数据
   const filteredItems = useMemo(() => {
@@ -290,12 +305,20 @@ const ModelDashboard = () => {
                     style={{ width: 320 }}
                   />
                 ) : (
-                  <Select
-                    value={hours}
-                    onChange={(v) => setHours(v)}
-                    optionList={HOUR_OPTIONS}
-                    style={{ width: 140 }}
-                  />
+                  <>
+                    <Select
+                      value={hours}
+                      onChange={(v) => setHours(v)}
+                      optionList={HOUR_OPTIONS}
+                      style={{ width: 140 }}
+                    />
+                    <Select
+                      value={refreshInterval}
+                      onChange={(v) => setRefreshInterval(v)}
+                      optionList={REFRESH_OPTIONS}
+                      style={{ width: 130 }}
+                    />
+                  </>
                 )}
               </div>
             </div>
