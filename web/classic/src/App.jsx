@@ -39,6 +39,7 @@ import Log from './pages/Log';
 import RateLimitDashboard from './pages/RateLimitDashboard';
 import ModelDashboard from './pages/ModelDashboard';
 import PerformanceDashboard from './pages/PerformanceDashboard';
+import MySQLDashboard from './pages/MySQLDashboard';
 import Chat from './pages/Chat';
 import Chat2Link from './pages/Chat2Link';
 import MjProxy from './pages/Midjourney';
@@ -309,6 +310,14 @@ function App() {
           element={
             <PrivateRoute>
               <PerformanceDashboard />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/mysql-dashboard'
+          element={
+            <PrivateRoute>
+              <MySQLDashboard />
             </PrivateRoute>
           }
         />

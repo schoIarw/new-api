@@ -56,6 +56,7 @@ const PageLayout = () => {
     '/console/rate-limit',
     '/console/model-dashboard',
     '/console/performance-dashboard',
+    '/console/mysql-dashboard',
     '/console/redemption',
     '/console/user',
     '/console/token',

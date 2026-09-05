@@ -37,6 +37,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     'model-dashboard': true,
     'rate-limit': true,
     'performance-dashboard': true,
+    'mysql-dashboard': true,
     token: true,
     log: true,
     midjourney: true,

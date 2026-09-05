@@ -6,6 +6,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type SystemTaskStatus string
@@ -273,8 +274,11 @@ func acquireSystemTaskLock(taskType string, taskID string, lockedBy string, now 
 		LockedUntil: lockUntil,
 		UpdatedAt:   now,
 	}
-	if err := DB.Create(lock).Error; err == nil {
-		return true, "", nil
+	if err := DB.Clauses(clause.OnConflict{DoNothing: true}).Create(lock).Error; err == nil {
+		// 检查是否实际插入成功（INSERT IGNORE 在已存在时返回 nil 但 RowsAffected=0）
+		if DB.Where("type = ? AND locked_by = ?", taskType, lockedBy).First(&SystemTaskLock{}).Error == nil {
+			return true, "", nil
+		}
 	}
 
 	var existing SystemTaskLock

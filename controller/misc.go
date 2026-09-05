@@ -127,6 +127,7 @@ func GetStatus(c *gin.Context) {
 		"model_dashboard_enabled":        operation_setting.GetDashboardSetting().ModelDashboardEnabled,
 		"rate_limit_dashboard_enabled":   operation_setting.GetDashboardSetting().RateLimitDashboardEnabled,
 		"performance_dashboard_enabled":  operation_setting.GetDashboardSetting().PerformanceDashboardEnabled,
+		"mysql_dashboard_enabled":         operation_setting.GetDashboardSetting().MySQLDashboardEnabled,
 	}
 
 	// 根据启用状态注入可选内容

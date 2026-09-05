@@ -16,6 +16,7 @@ export default function SettingsDashboard(props) {
     'dashboard_setting.model_dashboard_enabled': true,
     'dashboard_setting.rate_limit_dashboard_enabled': true,
     'dashboard_setting.performance_dashboard_enabled': true,
+    'dashboard_setting.mysql_dashboard_enabled': true,
   });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
@@ -75,10 +76,10 @@ export default function SettingsDashboard(props) {
               type='tertiary'
               style={{ marginBottom: 16, display: 'block' }}
             >
-              {t('控制模型看板、限流看板、性能看板是否在侧边栏显示')}
+              {t('控制模型看板、限流看板、性能看板、MySQL面板是否在侧边栏显示')}
             </Typography.Text>
             <Row gutter={16}>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+              <Col xs={24} sm={12} md={6} lg={6} xl={6}>
                 <Form.Switch
                   field={'dashboard_setting.model_dashboard_enabled'}
                   label={t('启用模型看板')}
@@ -88,7 +89,7 @@ export default function SettingsDashboard(props) {
                   onChange={handleFieldChange('dashboard_setting.model_dashboard_enabled')}
                 />
               </Col>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+              <Col xs={24} sm={12} md={6} lg={6} xl={6}>
                 <Form.Switch
                   field={'dashboard_setting.rate_limit_dashboard_enabled'}
                   label={t('启用限流看板')}
@@ -98,7 +99,7 @@ export default function SettingsDashboard(props) {
                   onChange={handleFieldChange('dashboard_setting.rate_limit_dashboard_enabled')}
                 />
               </Col>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+              <Col xs={24} sm={12} md={6} lg={6} xl={6}>
                 <Form.Switch
                   field={'dashboard_setting.performance_dashboard_enabled'}
                   label={t('启用性能看板')}
@@ -106,6 +107,16 @@ export default function SettingsDashboard(props) {
                   checkedText='｜'
                   uncheckedText='〇'
                   onChange={handleFieldChange('dashboard_setting.performance_dashboard_enabled')}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={6} lg={6} xl={6}>
+                <Form.Switch
+                  field={'dashboard_setting.mysql_dashboard_enabled'}
+                  label={t('启用MySQL面板')}
+                  size='default'
+                  checkedText='｜'
+                  uncheckedText='〇'
+                  onChange={handleFieldChange('dashboard_setting.mysql_dashboard_enabled')}
                 />
               </Col>
             </Row>

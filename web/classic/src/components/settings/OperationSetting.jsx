@@ -84,6 +84,7 @@ const OperationSetting = () => {
     'dashboard_setting.model_dashboard_enabled': true,
     'dashboard_setting.rate_limit_dashboard_enabled': true,
     'dashboard_setting.performance_dashboard_enabled': true,
+    'dashboard_setting.mysql_dashboard_enabled': true,
 
     /* 令牌设置 */
     'token_setting.max_user_tokens': 1000,

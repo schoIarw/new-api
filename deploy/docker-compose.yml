@@ -1,0 +1,127 @@
+version: '3.8'
+
+services:
+  # 管理端（仅管理后台，不处理 relay 流量）
+  new-api-admin:
+    image: new-api:rc.23-split
+    container_name: new-api-admin
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+      - NODE_NAME=admin-1
+      - SQL_DSN=root:Root@123456@tcp(host.docker.internal:3306)/oneapi
+      - REDIS_CONN_STRING=redis://:NewApi2026@new-api-redis:6379
+      - SESSION_SECRET=split-deploy-session-secret-change-me
+      - SYNC_FREQUENCY=60
+      - BATCH_UPDATE_ENABLED=true
+    volumes:
+      - admin_data:/data
+    ports:
+      - "3000:3000"
+    depends_on:
+      - new-api-redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - new-api-net
+
+  # API 服务端 1
+  new-api-1:
+    image: new-api:rc.23-split
+    container_name: new-api-1
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+      - NODE_NAME=api-1
+      - SQL_DSN=root:Root@123456@tcp(host.docker.internal:3306)/oneapi
+      - REDIS_CONN_STRING=redis://:NewApi2026@new-api-redis:6379
+      - SESSION_SECRET=split-deploy-session-secret-change-me
+      - RELAY_ONLY=true
+      - SYNC_FREQUENCY=60
+      - BATCH_UPDATE_ENABLED=true
+    volumes:
+      - api1_data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - new-api-net
+
+  # API 服务端 2
+  new-api-2:
+    image: new-api:rc.23-split
+    container_name: new-api-2
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+      - NODE_NAME=api-2
+      - SQL_DSN=root:Root@123456@tcp(host.docker.internal:3306)/oneapi
+      - REDIS_CONN_STRING=redis://:NewApi2026@new-api-redis:6379
+      - SESSION_SECRET=split-deploy-session-secret-change-me
+      - RELAY_ONLY=true
+      - SYNC_FREQUENCY=60
+      - BATCH_UPDATE_ENABLED=true
+    volumes:
+      - api2_data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - new-api-net
+
+  # API 服务端 3
+  new-api-3:
+    image: new-api:rc.23-split
+    container_name: new-api-3
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+      - NODE_NAME=api-3
+      - SQL_DSN=root:Root@123456@tcp(host.docker.internal:3306)/oneapi
+      - REDIS_CONN_STRING=redis://:NewApi2026@new-api-redis:6379
+      - SESSION_SECRET=split-deploy-session-secret-change-me
+      - RELAY_ONLY=true
+      - SYNC_FREQUENCY=60
+      - BATCH_UPDATE_ENABLED=true
+    volumes:
+      - api3_data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - new-api-net
+
+  # Nginx 负载均衡
+  new-api-nginx:
+    image: nginx:alpine
+    container_name: new-api-nginx
+    restart: always
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - new-api-1
+      - new-api-2
+      - new-api-3
+    networks:
+      - new-api-net
+
+  # Redis
+  new-api-redis:
+    image: redis:7-alpine
+    container_name: new-api-redis
+    restart: always
+    command: redis-server --requirepass NewApi2026
+    volumes:
+      - redis_data:/data
+    networks:
+      - new-api-net
+
+networks:
+  new-api-net:
+    driver: bridge
+
+volumes:
+  admin_data:
+  api1_data:
+  api2_data:
+  api3_data:
+  redis_data:

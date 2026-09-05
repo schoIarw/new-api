@@ -43,6 +43,7 @@ const routerMap = {
   'rate-limit': '/console/rate-limit',
   'model-dashboard': '/console/model-dashboard',
   'performance-dashboard': '/console/performance-dashboard',
+  'mysql-dashboard': '/console/mysql-dashboard',
   midjourney: '/console/midjourney',
   setting: '/console/setting',
   about: '/about',
@@ -68,6 +69,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
   const modelDashboardEnabled = statusState?.status?.model_dashboard_enabled !== false;
   const rateLimitDashboardEnabled = statusState?.status?.rate_limit_dashboard_enabled !== false;
   const performanceDashboardEnabled = statusState?.status?.performance_dashboard_enabled !== false;
+  const mysqlDashboardEnabled = statusState?.status?.mysql_dashboard_enabled !== false;
 
   const showSkeleton = useMinimumLoadingTime(sidebarLoading, 200);
 
@@ -105,6 +107,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         itemKey: 'performance-dashboard',
         to: '/performance-dashboard',
         className: isAdmin() && performanceDashboardEnabled ? '' : 'tableHiddle',
+      },
+      {
+        text: t('DB 看板'),
+        itemKey: 'mysql-dashboard',
+        to: '/mysql-dashboard',
+        className: isAdmin() && mysqlDashboardEnabled ? '' : 'tableHiddle',
       },
       {
         text: t('令牌管理'),
