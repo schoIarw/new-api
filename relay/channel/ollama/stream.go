@@ -155,7 +155,9 @@ func ollamaStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 					var thinkingContent string
 					if err := common.Unmarshal(chunk.Message.Thinking, &thinkingContent); err == nil {
 						delta.Choices[0].Delta.SetReasoningContent(thinkingContent)
-						hasRealOutput = thinkingContent != ""
+						if thinkingContent != "" {
+							hasRealOutput = true
+						}
 					} else {
 						// Fallback to raw string if it's not a JSON string
 						delta.Choices[0].Delta.SetReasoningContent(raw)
