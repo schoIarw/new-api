@@ -41,7 +41,6 @@ const routerMap = {
   subscription: '/console/subscription',
   log: '/console/log',
   'rate-limit': '/console/rate-limit',
-  'model-dashboard': '/console/model-dashboard',
   'performance-dashboard': '/console/performance-dashboard',
   'mysql-dashboard': '/console/mysql-dashboard',
   midjourney: '/console/midjourney',
@@ -66,7 +65,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
   } = useSidebar();
   const [statusState] = useContext(StatusContext);
 
-  const modelDashboardEnabled = statusState?.status?.model_dashboard_enabled !== false;
   const rateLimitDashboardEnabled = statusState?.status?.rate_limit_dashboard_enabled !== false;
   const performanceDashboardEnabled = statusState?.status?.performance_dashboard_enabled !== false;
   const mysqlDashboardEnabled = statusState?.status?.mysql_dashboard_enabled !== false;
@@ -89,12 +87,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
           localStorage.getItem('enable_data_export') === 'true'
             ? ''
             : 'tableHiddle',
-      },
-      {
-        text: t('模型看板'),
-        itemKey: 'model-dashboard',
-        to: '/model-dashboard',
-        className: isAdmin() && modelDashboardEnabled ? '' : 'tableHiddle',
       },
       {
         text: t('限流看板'),
