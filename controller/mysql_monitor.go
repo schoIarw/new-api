@@ -12,25 +12,25 @@ import (
 
 // MySQLSlowQuery 慢查询
 type MySQLSlowQuery struct {
-	Id        uint64 `json:"id"`
-	User      string `json:"user"`
-	Host      string `json:"host"`
-	DB        string `json:"db"`
-	Command   string `json:"command"`
-	Time      int64  `json:"time"`
-	State     string `json:"state"`
-	Info      string `json:"info"`
+	Id      uint64 `json:"id"`
+	User    string `json:"user"`
+	Host    string `json:"host"`
+	DB      string `json:"db"`
+	Command string `json:"command"`
+	Time    int64  `json:"time"`
+	State   string `json:"state"`
+	Info    string `json:"info"`
 }
 
 // MySQLLockWait 锁等待
 type MySQLLockWait struct {
-	WaitingPid   uint64 `json:"waiting_pid"`
-	WaitingQuery string `json:"waiting_query"`
-	WaitingMode string `json:"waiting_mode"`
-	BlockingPid  uint64 `json:"blocking_pid"`
+	WaitingPid    uint64 `json:"waiting_pid"`
+	WaitingQuery  string `json:"waiting_query"`
+	WaitingMode   string `json:"waiting_mode"`
+	BlockingPid   uint64 `json:"blocking_pid"`
 	BlockingQuery string `json:"blocking_query"`
-	BlockingMode string `json:"blocking_mode"`
-	WaitTime    int64  `json:"wait_time"`
+	BlockingMode  string `json:"blocking_mode"`
+	WaitTime      int64  `json:"wait_time"`
 }
 
 // MySQLMonitorData 监控数据
@@ -41,8 +41,8 @@ type MySQLMonitorData struct {
 
 	// 吞吐（累计值，前端计算速率）
 	Questions      int64 `json:"questions"`
-	ComCommit     int64 `json:"com_commit"`
-	ComRollback   int64 `json:"com_rollback"`
+	ComCommit      int64 `json:"com_commit"`
+	ComRollback    int64 `json:"com_rollback"`
 	BytesReceived int64 `json:"bytes_received"`
 	BytesSent     int64 `json:"bytes_sent"`
 
@@ -53,8 +53,8 @@ type MySQLMonitorData struct {
 	InnodbDeadlocks        int64   `json:"innodb_deadlocks"`
 
 	// 慢查询与临时表
-	SlowQueries            int64 `json:"slow_queries"`
-	CreatedTmpTablesOnDisk  int64 `json:"created_tmp_tables_on_disk"`
+	SlowQueries           int64 `json:"slow_queries"`
+	CreatedTmpTablesOnDisk int64 `json:"created_tmp_tables_on_disk"`
 
 	// 慢查询列表
 	SlowQueriesList []MySQLSlowQuery `json:"slow_queries_list"`
@@ -85,7 +85,8 @@ func GetMySQLMonitor(c *gin.Context) {
 		db = model.LOG_DB
 	}
 
-	// 采集 SHOW GLOBAL STATUS
+	// 采集 SHOW GLOBAL STATUS。Threads_connected 是 STATUS 而不是 VARIABLE，
+	// 必须随每次刷新从这里读取，否则连接数卡片会长期为 0/旧值。
 	statusMap, err := queryMySQLGlobalStatus(db)
 	if err != nil {
 		common.SysError("mysql monitor: query global status failed: " + err.Error())
@@ -96,6 +97,7 @@ func GetMySQLMonitor(c *gin.Context) {
 		return
 	}
 
+	data.ThreadsConnected = int(statusMap["Threads_connected"])
 	data.Questions = statusMap["Questions"]
 	data.ComCommit = statusMap["Com_commit"]
 	data.ComRollback = statusMap["Com_rollback"]
@@ -107,7 +109,6 @@ func GetMySQLMonitor(c *gin.Context) {
 	data.SlowQueries = statusMap["Slow_queries"]
 	data.CreatedTmpTablesOnDisk = statusMap["Created_tmp_tables_on_disk"]
 
-	// 计算缓冲池命中率
 	if data.BufferPoolReadRequests > 0 {
 		data.BufferPoolHitRate = (1 - float64(data.BufferPoolReads)/float64(data.BufferPoolReadRequests)) * 100
 		if data.BufferPoolHitRate < 0 {
@@ -115,22 +116,19 @@ func GetMySQLMonitor(c *gin.Context) {
 		}
 	}
 
-	// 采集 SHOW GLOBAL VARIABLES
+	// max_connections 才是 GLOBAL VARIABLE；动态连接数从 STATUS 获取。
 	varsMap, err := queryMySQLGlobalVariables(db)
 	if err != nil {
 		common.SysError("mysql monitor: query global variables failed: " + err.Error())
 	}
 	data.MaxConnections = varsMap["max_connections"]
-	data.ThreadsConnected = varsMap["threads_connected"]
 
-	// 采集慢查询列表（运行时间 > 10 秒）
 	slowQueries, err := queryMySQLSlowQueries(db)
 	if err != nil {
 		common.SysError("mysql monitor: query slow queries failed: " + err.Error())
 	}
 	data.SlowQueriesList = slowQueries
 
-	// 采集锁等待
 	lockWaits, err := queryMySQLLockWaits(db)
 	if err != nil {
 		common.SysError("mysql monitor: query lock waits failed: " + err.Error())
@@ -215,7 +213,7 @@ func queryMySQLGlobalStatus(db *gorm.DB) (map[string]int64, error) {
 
 // queryMySQLGlobalVariables 执行 SHOW GLOBAL VARIABLES
 func queryMySQLGlobalVariables(db *gorm.DB) (map[string]int, error) {
-	rows, err := db.Raw("SHOW GLOBAL VARIABLES WHERE Variable_name IN ('max_connections', 'threads_connected')").Rows()
+	rows, err := db.Raw("SHOW GLOBAL VARIABLES WHERE Variable_name = 'max_connections'").Rows()
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +243,6 @@ func queryMySQLGlobalVariables(db *gorm.DB) (map[string]int, error) {
 // queryMySQLSlowQueries 查询运行时间超过 10 秒的用户进程（排除系统用户）
 func queryMySQLSlowQueries(db *gorm.DB) ([]MySQLSlowQuery, error) {
 	rows, err := db.Raw("SELECT id, user, host, IFNULL(db, ''), command, time, IFNULL(state, ''), IFNULL(info, '') FROM information_schema.processlist WHERE time > 10 AND command != 'Sleep' AND user NOT IN ('system user', 'event_scheduler') ORDER BY time DESC LIMIT 100").Rows()
-
 	if err != nil {
 		return nil, err
 	}
