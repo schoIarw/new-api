@@ -3,6 +3,7 @@ package openai
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
@@ -19,8 +20,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// 辅助函数
+// HandleStreamFormat sends one stream frame to the downstream client.
+// StreamScannerHandler marks the first upstream frame arrival, but OpenAI relay
+// may intentionally hold that frame until the next frame. For dashboard FRT we
+// need the real downstream first-byte time, so overwrite FirstResponseTime at
+// the first actual downstream write.
 func HandleStreamFormat(c *gin.Context, info *relaycommon.RelayInfo, data string, forceFormat bool, thinkToContent bool) error {
+	if info.SendResponseCount == 0 {
+		info.FirstResponseTime = time.Now()
+	}
 	info.SendResponseCount++
 
 	switch info.RelayFormat {
@@ -73,7 +81,6 @@ func handleGeminiFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 		return fmt.Errorf("expected Gemini stream response, got %T", result.Value)
 	}
 
-	// 如果返回 nil，表示没有实际内容，跳过发送
 	if geminiResponse == nil {
 		return nil
 	}
@@ -84,7 +91,6 @@ func handleGeminiFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 		return err
 	}
 
-	// send gemini format response
 	c.Render(-1, common.CustomEvent{Data: "data: " + string(geminiResponseStr)})
 	_ = helper.FlushWriter(c)
 	return nil
@@ -203,11 +209,6 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 			return
 		}
 
-		// 这里处理的是 openai 最后一个流响应，其 delta 为空，有 finish_reason 字段
-		// 因此相比较于 google 官方的流响应，由 openai 转换而来会多一个 parts 为空，finishReason 为 STOP 的响应
-		// 而包含最后一段文本输出的响应（倒数第二个）的 finishReason 为 null
-		// 暂不知是否有程序会不兼容。
-
 		result, err := relayconvert.ConvertStreamResponse(c, info, types.RelayFormatGemini, &streamResponse)
 		if err != nil {
 			common.SysLog("error converting Gemini stream response: " + err.Error())
@@ -219,7 +220,6 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 			return
 		}
 
-		// openai 流响应开头的空数据
 		if geminiResponse == nil {
 			return
 		}
@@ -230,7 +230,6 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 			return
 		}
 
-		// 发送最终的 Gemini 响应
 		c.Render(-1, common.CustomEvent{Data: "data: " + string(geminiResponseStr)})
 		_ = helper.FlushWriter(c)
 	}
