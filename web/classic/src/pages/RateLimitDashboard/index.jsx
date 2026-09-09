@@ -95,12 +95,18 @@ const RateLimitDashboard = () => {
     return opts;
   }, [chartData]);
 
+  const accountFilterKeyword = filterAccount.trim().toLowerCase();
+  const accountFilterTooShort =
+    accountFilterKeyword.length > 0 && accountFilterKeyword.length < 7;
+
   const filteredChartData = useMemo(() => {
     const kw = filterAccount.trim().toLowerCase();
-    const useAccountFilter = kw.length >= 7;
+    if (kw.length > 0 && kw.length < 7) {
+      return [];
+    }
     return chartData.filter((r) => {
       if (filterKey && r.tokenName !== filterKey) return false;
-      if (useAccountFilter && !(r.account || '').toLowerCase().includes(kw)) return false;
+      if (kw.length >= 7 && !(r.account || '').toLowerCase().includes(kw)) return false;
       return true;
     });
   }, [chartData, filterKey, filterAccount]);
@@ -392,11 +398,15 @@ const RateLimitDashboard = () => {
                 showClear
                 style={{ width: 220 }}
               />
-              {(filterKey || filterAccount) && (
+              {accountFilterTooShort ? (
+                <Tag color='orange' size='small'>
+                  至少输入 7 位 Account 后才执行筛选
+                </Tag>
+              ) : (filterKey || filterAccount) ? (
                 <Tag color='light-blue' size='small'>
                   命中 {filteredSeriesCount} 条曲线
                 </Tag>
-              )}
+              ) : null}
             </div>
           </div>
         }
@@ -404,7 +414,13 @@ const RateLimitDashboard = () => {
       >
         <Spin spinning={loading}>
           <div className='h-[480px] p-2'>
-            {filteredChartData.length > 0 ? (
+            {accountFilterTooShort ? (
+              <Empty
+                title='请输入至少 7 位 Account'
+                description='输入不足 7 位时不会执行 Account 筛选'
+                style={{ padding: 80 }}
+              />
+            ) : filteredChartData.length > 0 ? (
               <VChart spec={spec} option={CHART_CONFIG} />
             ) : chartData.length > 0 ? (
               <Empty
