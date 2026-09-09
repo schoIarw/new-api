@@ -247,9 +247,6 @@ func modelDashboardRateWindowSeconds(stepSeconds int64) int64 {
 
 func buildVLLMModelMetricDefinitions(job string, rateWindowSeconds int64) []modelMetricDefinition {
 	jobMatcher := fmt.Sprintf(`job="%s"`, escapePrometheusLabelValue(job))
-	// fmt.Sprintf 的模板是普通 PromQL label matcher；移除 Go 字符串转义后应为 job="value"。
-	jobMatcher = strings.ReplaceAll(jobMatcher, `\"`, `"`)
-
 	selector := func(extra string) string {
 		if extra == "" {
 			return "{" + jobMatcher + "}"
