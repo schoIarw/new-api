@@ -610,43 +610,6 @@ func GetRateLimitGroupStats(startTimestamp, endTimestamp int64) ([]RateLimitGrou
 	return stats, nil
 }
 
-// ModelBucketStat 模型看板中按 5 分钟桶 + token_name + model_name 聚合的统计
-type ModelBucketStat struct {
-	TokenName        string `json:"token_name" gorm:"column:token_name"`
-	ModelName        string `json:"model_name" gorm:"column:model_name"`
-	Bucket           int64  `json:"bucket" gorm:"column:bucket"`
-	Count            int64  `json:"count" gorm:"column:count"`
-	PromptTokens     int64  `json:"prompt_tokens" gorm:"column:prompt_tokens"`
-	CompletionTokens int64  `json:"completion_tokens" gorm:"column:completion_tokens"`
-}
-
-// GetModelDashboardStats 按 5 分钟粒度分组统计消费日志。
-// ignoreKey=true 时仅按 model_name 分组（token_name 返回空串）。
-func GetModelDashboardStats(startTimestamp, endTimestamp int64, ignoreKey bool) ([]ModelBucketStat, error) {
-	var stats []ModelBucketStat
-	var tokenNameCol, groupCols string
-	if ignoreKey {
-		tokenNameCol = "'' as token_name"
-		groupCols = "model_name, bucket"
-	} else {
-		tokenNameCol = "token_name"
-		groupCols = "token_name, model_name, bucket"
-	}
-	err := LOG_DB.Table("logs").
-		Select(tokenNameCol + ", model_name, floor(created_at / 300) * 300 as bucket, count(*) as count, ifnull(sum(prompt_tokens),0) as prompt_tokens, ifnull(sum(completion_tokens),0) as completion_tokens").
-		Where("type = ?", LogTypeConsume).
-		Where("created_at >= ?", startTimestamp).
-		Where("created_at <= ?", endTimestamp).
-		Group(groupCols).
-		Order("bucket ASC").
-		Scan(&stats).Error
-	if err != nil {
-		common.SysError("failed to query model dashboard stats: " + err.Error())
-		return nil, errors.New("查询模型看板统计数据失败")
-	}
-	return stats, nil
-}
-
 // PerformanceBucketStat 性能看板按 5 分钟桶 + token_name + model_name 聚合的统计。
 // FRT 仅对 is_stream=true 的记录统计；token 生成速率 = completion_tokens / (use_time - frt/1000)。
 type PerformanceBucketStat struct {
