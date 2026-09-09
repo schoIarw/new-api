@@ -74,7 +74,10 @@ func TestModelRequestRateLimitGroupRejectsInvalidValues(t *testing.T) {
 
 	for _, config := range tests {
 		if err := CheckModelRequestRateLimitGroup(config); err == nil {
-			t.Fatalf("expected invalid config to fail: %s", config)
+			t.Fatalf("expected invalid config to fail validation: %s", config)
+		}
+		if err := UpdateModelRequestRateLimitGroupByJSONString(config); err == nil {
+			t.Fatalf("expected invalid config to be rejected on update: %s", config)
 		}
 	}
 }
