@@ -147,6 +147,14 @@ const MySQLDashboard = () => {
     ? ((data.threads_connected / data.max_connections) * 100).toFixed(1)
     : '-';
 
+  const slowQueryLogStatus = data?.slow_query_log_status || 'UNKNOWN';
+  const slowQueryLogEnabled = data?.slow_query_log_enabled === true;
+  const longQueryTimeValue = Number(data?.long_query_time);
+  const longQueryTime = Number.isFinite(longQueryTimeValue) ? longQueryTimeValue : 10;
+  const longQueryTimeLabel = longQueryTime.toLocaleString(undefined, {
+    maximumFractionDigits: 3,
+  });
+
   // 实时折线图 spec - QPS & TPS
   const qpsTpsSpec = useMemo(() => {
     const rows = chartHistory.map((h) => ({
@@ -164,12 +172,20 @@ const MySQLDashboard = () => {
         { field: 'TPS', type: 'line', line: { style: { lineDash: [4, 4] } } },
       ],
       axes: [
-        { orient: 'bottom', label: { style: { fontSize: 10 } } },
-        { orient: 'left', label: { style: { fontSize: 10 } } },
+        {
+          orient: 'bottom',
+          title: { visible: true, text: '时间 (HH:mm:ss)', style: { fontSize: 11 } },
+          label: { style: { fontSize: 10 } },
+        },
+        {
+          orient: 'left',
+          title: { visible: true, text: '速率 (次/秒)', style: { fontSize: 11 } },
+          label: { style: { fontSize: 10 } },
+        },
       ],
       legends: { visible: true, position: 'top' },
       tooltip: { visible: true },
-      padding: { top: 8, bottom: 8, left: 40, right: 16 },
+      padding: { top: 8, bottom: 36, left: 64, right: 16 },
       height: CHART_HEIGHT,
     };
   }, [chartHistory]);
@@ -191,12 +207,20 @@ const MySQLDashboard = () => {
         { field: '流出(KB/s)', type: 'line', line: { style: { lineDash: [4, 4] } } },
       ],
       axes: [
-        { orient: 'bottom', label: { style: { fontSize: 10 } } },
-        { orient: 'left', label: { style: { fontSize: 10 } } },
+        {
+          orient: 'bottom',
+          title: { visible: true, text: '时间 (HH:mm:ss)', style: { fontSize: 11 } },
+          label: { style: { fontSize: 10 } },
+        },
+        {
+          orient: 'left',
+          title: { visible: true, text: '吞吐量 (KB/s)', style: { fontSize: 11 } },
+          label: { style: { fontSize: 10 } },
+        },
       ],
       legends: { visible: true, position: 'top' },
       tooltip: { visible: true },
-      padding: { top: 8, bottom: 8, left: 50, right: 16 },
+      padding: { top: 8, bottom: 36, left: 72, right: 16 },
       height: CHART_HEIGHT,
     };
   }, [chartHistory]);
@@ -307,10 +331,14 @@ const MySQLDashboard = () => {
                 color='#10b981'
               />
               <MetricCard
-                title='慢查询数'
-                value={formatNum(data.slow_queries)}
-                sub='Slow Queries'
-                color={data.slow_queries > 0 ? '#ef4444' : '#10b981'}
+                title='当前慢查询'
+                value={slowQueryLogEnabled
+                  ? formatNum(data.slow_queries)
+                  : (slowQueryLogStatus === 'OFF' ? '未开启' : '状态未知')}
+                sub={slowQueryLogEnabled
+                  ? `阈值 ≥ ${longQueryTimeLabel} 秒`
+                  : `slow_query_log=${slowQueryLogStatus}`}
+                color={slowQueryLogEnabled && data.slow_queries > 0 ? '#ef4444' : '#10b981'}
               />
               <MetricCard
                 title='死锁数'
@@ -349,15 +377,28 @@ const MySQLDashboard = () => {
             </div>
 
             {/* 慢查询表格 */}
-            <Card style={{ marginBottom: 20 }} title='慢查询（运行时间 > 10 秒）'>
-              <Table
-                columns={slowQueryColumns}
-                dataSource={data.slow_queries_list || []}
-                rowKey='id'
-                pagination={{ pageSize: 10, showSizeChanger: true }}
-                size='small'
-                scroll={{ x: 1100 }}
-              />
+            <Card
+              style={{ marginBottom: 20 }}
+              title={slowQueryLogEnabled
+                ? `当前慢查询（运行时间 ≥ ${longQueryTimeLabel} 秒）`
+                : '当前慢查询'}
+            >
+              {slowQueryLogEnabled ? (
+                <Table
+                  columns={slowQueryColumns}
+                  dataSource={data.slow_queries_list || []}
+                  rowKey='id'
+                  pagination={{ pageSize: 10, showSizeChanger: true }}
+                  size='small'
+                  scroll={{ x: 1100 }}
+                />
+              ) : (
+                <Empty
+                  description={slowQueryLogStatus === 'OFF'
+                    ? 'MySQL slow_query_log 未开启，不展示慢查询列表'
+                    : '无法确认 MySQL slow_query_log 状态，不展示慢查询列表'}
+                />
+              )}
             </Card>
 
             {/* 锁等待表格 */}
