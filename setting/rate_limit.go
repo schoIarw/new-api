@@ -93,9 +93,39 @@ func ModelRequestRateLimitGroup2JSONString() string {
 	return string(jsonBytes)
 }
 
+func validateRateLimitPair(name string, limits [2]int) error {
+	if limits[0] < 0 || limits[1] < 0 {
+		return fmt.Errorf("%s has negative rate limit values: [%d, %d]", name, limits[0], limits[1])
+	}
+	if limits[0] > math.MaxInt32 || limits[1] > math.MaxInt32 {
+		return fmt.Errorf("%s [%d, %d] has max rate limits value 2147483647", name, limits[0], limits[1])
+	}
+	return nil
+}
+
+func validateModelRequestRateLimitEntries(parsed map[string]ModelRequestRateLimitEntry) error {
+	for group, entry := range parsed {
+		if entry.Direct != nil {
+			if err := validateRateLimitPair("group "+group, *entry.Direct); err != nil {
+				return err
+			}
+			continue
+		}
+		for modelName, limits := range entry.Models {
+			if err := validateRateLimitPair(fmt.Sprintf("group %s model %s", group, modelName), limits); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func UpdateModelRequestRateLimitGroupByJSONString(jsonStr string) error {
 	parsed := make(map[string]ModelRequestRateLimitEntry)
 	if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
+		return err
+	}
+	if err := validateModelRequestRateLimitEntries(parsed); err != nil {
 		return err
 	}
 
@@ -148,35 +178,10 @@ func GetGroupModelRateLimit(group, modelName string) (totalCount, successCount i
 	return limits[0], limits[1], true
 }
 
-func validateRateLimitPair(name string, limits [2]int) error {
-	if limits[0] < 0 || limits[1] < 0 {
-		return fmt.Errorf("%s has negative rate limit values: [%d, %d]", name, limits[0], limits[1])
-	}
-	if limits[0] > math.MaxInt32 || limits[1] > math.MaxInt32 {
-		return fmt.Errorf("%s [%d, %d] has max rate limits value 2147483647", name, limits[0], limits[1])
-	}
-	return nil
-}
-
 func CheckModelRequestRateLimitGroup(jsonStr string) error {
 	parsed := make(map[string]ModelRequestRateLimitEntry)
 	if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
 		return err
 	}
-
-	for group, entry := range parsed {
-		if entry.Direct != nil {
-			if err := validateRateLimitPair("group "+group, *entry.Direct); err != nil {
-				return err
-			}
-			continue
-		}
-		for modelName, limits := range entry.Models {
-			if err := validateRateLimitPair(fmt.Sprintf("group %s model %s", group, modelName), limits); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
+	return validateModelRequestRateLimitEntries(parsed)
 }
