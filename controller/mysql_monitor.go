@@ -3,6 +3,7 @@ package controller
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -10,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// MySQLSlowQuery 慢查询
+// MySQLSlowQuery 当前可管理慢查询
 type MySQLSlowQuery struct {
 	Id      uint64 `json:"id"`
 	User    string `json:"user"`
@@ -40,9 +41,9 @@ type MySQLMonitorData struct {
 	MaxConnections   int `json:"max_connections"`
 
 	// 吞吐（累计值，前端计算速率）
-	Questions      int64 `json:"questions"`
-	ComCommit      int64 `json:"com_commit"`
-	ComRollback    int64 `json:"com_rollback"`
+	Questions     int64 `json:"questions"`
+	ComCommit     int64 `json:"com_commit"`
+	ComRollback   int64 `json:"com_rollback"`
 	BytesReceived int64 `json:"bytes_received"`
 	BytesSent     int64 `json:"bytes_sent"`
 
@@ -52,9 +53,14 @@ type MySQLMonitorData struct {
 	BufferPoolHitRate      float64 `json:"buffer_pool_hit_rate"`
 	InnodbDeadlocks        int64   `json:"innodb_deadlocks"`
 
-	// 慢查询与临时表
-	SlowQueries           int64 `json:"slow_queries"`
-	CreatedTmpTablesOnDisk int64 `json:"created_tmp_tables_on_disk"`
+	// 慢查询。SlowQueries 是当前可管理慢查询数，与 SlowQueriesList 一一对应；
+	// SlowQueriesTotal 保留 MySQL 自启动以来的累计 Slow_queries，仅用于诊断。
+	SlowQueries            int64   `json:"slow_queries"`
+	SlowQueriesTotal       int64   `json:"slow_queries_total"`
+	SlowQueryLogEnabled    bool    `json:"slow_query_log_enabled"`
+	SlowQueryLogStatus     string  `json:"slow_query_log_status"`
+	LongQueryTime          float64 `json:"long_query_time"`
+	CreatedTmpTablesOnDisk int64   `json:"created_tmp_tables_on_disk"`
 
 	// 慢查询列表
 	SlowQueriesList []MySQLSlowQuery `json:"slow_queries_list"`
@@ -77,7 +83,10 @@ func GetMySQLMonitor(c *gin.Context) {
 	}
 
 	data := MySQLMonitorData{
-		Timestamp: common.GetTimestamp(),
+		Timestamp:          common.GetTimestamp(),
+		SlowQueryLogStatus: "UNKNOWN",
+		LongQueryTime:      10,
+		SlowQueriesList:    make([]MySQLSlowQuery, 0),
 	}
 
 	db := model.DB
@@ -106,7 +115,7 @@ func GetMySQLMonitor(c *gin.Context) {
 	data.BufferPoolReadRequests = statusMap["Innodb_buffer_pool_read_requests"]
 	data.BufferPoolReads = statusMap["Innodb_buffer_pool_reads"]
 	data.InnodbDeadlocks = statusMap["Innodb_deadlocks"]
-	data.SlowQueries = statusMap["Slow_queries"]
+	data.SlowQueriesTotal = statusMap["Slow_queries"]
 	data.CreatedTmpTablesOnDisk = statusMap["Created_tmp_tables_on_disk"]
 
 	if data.BufferPoolReadRequests > 0 {
@@ -123,11 +132,25 @@ func GetMySQLMonitor(c *gin.Context) {
 	}
 	data.MaxConnections = varsMap["max_connections"]
 
-	slowQueries, err := queryMySQLSlowQueries(db)
+	// 慢查询必须先严格确认 slow_query_log 已开启，并使用 MySQL 当前 long_query_time。
+	// 未开启或状态无法确认时不展示慢查询，避免把累计 Slow_queries 或复制线程误认为用户慢查询。
+	slowStatus, slowEnabled, longQueryTime, err := queryMySQLSlowQueryConfig(db)
 	if err != nil {
-		common.SysError("mysql monitor: query slow queries failed: " + err.Error())
+		common.SysError("mysql monitor: query slow query config failed: " + err.Error())
+	} else {
+		data.SlowQueryLogStatus = slowStatus
+		data.SlowQueryLogEnabled = slowEnabled
+		data.LongQueryTime = longQueryTime
+		if slowEnabled {
+			slowQueries, queryErr := queryMySQLSlowQueries(db, longQueryTime)
+			if queryErr != nil {
+				common.SysError("mysql monitor: query slow queries failed: " + queryErr.Error())
+			} else {
+				data.SlowQueriesList = slowQueries
+				data.SlowQueries = int64(len(slowQueries))
+			}
+		}
 	}
-	data.SlowQueriesList = slowQueries
 
 	lockWaits, err := queryMySQLLockWaits(db)
 	if err != nil {
@@ -240,15 +263,52 @@ func queryMySQLGlobalVariables(db *gorm.DB) (map[string]int, error) {
 	return result, nil
 }
 
-// queryMySQLSlowQueries 查询运行时间超过 10 秒的用户进程（排除系统用户）
-func queryMySQLSlowQueries(db *gorm.DB) ([]MySQLSlowQuery, error) {
-	rows, err := db.Raw("SELECT id, user, host, IFNULL(db, ''), command, time, IFNULL(state, ''), IFNULL(info, '') FROM information_schema.processlist WHERE time > 10 AND command != 'Sleep' AND user NOT IN ('system user', 'event_scheduler') ORDER BY time DESC LIMIT 100").Rows()
+// queryMySQLSlowQueryConfig 查询慢日志开关和阈值。
+func queryMySQLSlowQueryConfig(db *gorm.DB) (status string, enabled bool, longQueryTime float64, err error) {
+	rows, err := db.Raw("SHOW GLOBAL VARIABLES WHERE Variable_name IN ('slow_query_log', 'long_query_time')").Rows()
+	if err != nil {
+		return "UNKNOWN", false, 10, err
+	}
+	defer rows.Close()
+
+	status = "UNKNOWN"
+	longQueryTime = 10
+	for rows.Next() {
+		var name, value string
+		if scanErr := rows.Scan(&name, &value); scanErr != nil {
+			continue
+		}
+		switch name {
+		case "slow_query_log":
+			status = strings.ToUpper(strings.TrimSpace(value))
+			enabled = status == "ON" || status == "1"
+		case "long_query_time":
+			if parsed, parseErr := strconv.ParseFloat(strings.TrimSpace(value), 64); parseErr == nil && parsed >= 0 {
+				longQueryTime = parsed
+			}
+		}
+	}
+	return status, enabled, longQueryTime, nil
+}
+
+// queryMySQLSlowQueries 查询当前达到 long_query_time 的用户 SQL。
+// 仅保留 command=Query 的真实 SQL，可排除 Binlog Dump/Replica/Daemon/Sleep 等系统与复制线程。
+func queryMySQLSlowQueries(db *gorm.DB, longQueryTime float64) ([]MySQLSlowQuery, error) {
+	sql := `SELECT id, user, host, IFNULL(db, ''), command, time, IFNULL(state, ''), IFNULL(info, '')
+FROM information_schema.processlist
+WHERE command = 'Query'
+  AND info IS NOT NULL
+  AND time >= ?
+  AND id <> CONNECTION_ID()
+  AND user NOT IN ('system user', 'event_scheduler')
+ORDER BY time DESC`
+	rows, err := db.Raw(sql, longQueryTime).Rows()
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var list []MySQLSlowQuery
+	list := make([]MySQLSlowQuery, 0)
 	for rows.Next() {
 		var q MySQLSlowQuery
 		if err := rows.Scan(&q.Id, &q.User, &q.Host, &q.DB, &q.Command, &q.Time, &q.State, &q.Info); err != nil {
