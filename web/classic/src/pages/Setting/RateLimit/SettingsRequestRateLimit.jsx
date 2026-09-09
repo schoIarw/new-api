@@ -163,10 +163,10 @@ export default function RequestRateLimit(props) {
                 <Form.InputNumber
                   label={t('用户每周期最多请求完成次数')}
                   step={1}
-                  min={1}
+                  min={0}
                   max={100000000}
                   suffix={t('次')}
-                  extraText={t('只包括请求成功的次数')}
+                  extraText={t('只包括请求成功的次数，0代表不限制')}
                   field={'ModelRequestRateLimitSuccessCount'}
                   onChange={(value) =>
                     setInputs({
@@ -182,10 +182,10 @@ export default function RequestRateLimit(props) {
                 <Form.TextArea
                   label={t('分组速率限制')}
                   placeholder={t(
-                    '{\n  "default": [200, 100],\n  "vip": [0, 1000]\n}',
+                    '{\n  "testgroup": {\n    "all": [10, 5],\n    "qwen35-27b": [10, 5]\n  },\n  "18946512326": [10, 5]\n}',
                   )}
                   field={'ModelRequestRateLimitGroup'}
-                  autosize={{ minRows: 5, maxRows: 15 }}
+                  autosize={{ minRows: 7, maxRows: 18 }}
                   trigger='blur'
                   stopValidateWithError
                   rules={[
@@ -200,25 +200,30 @@ export default function RequestRateLimit(props) {
                       <ul>
                         <li>
                           {t(
-                            '使用 JSON 对象格式，格式为：{"组名": [最多请求次数, 最多请求完成次数]}',
+                            '组名使用对象格式：{"组名": {"all": [最大访问次数, 最大完成次数], "模型名": [最大访问次数, 最大完成次数]}}。',
                           )}
                         </li>
                         <li>
                           {t(
-                            '示例：{"default": [200, 100], "vip": [0, 1000]}。',
+                            'all 表示该组内所有模型的总限制；除 all 外的键均按模型名称精确匹配，并与 all 限制同时生效。',
                           )}
                         </li>
                         <li>
                           {t(
-                            '[最多请求次数]必须大于等于0，[最多请求完成次数]必须大于等于1。',
+                            '缺失 all 或配置 all:[0,0] 时，不限制该组所有模型的总量；单个模型配置 [0,0] 时该模型不增加额外限制。',
                           )}
                         </li>
                         <li>
                           {t(
-                            '[最多请求次数]和[最多请求完成次数]的最大值为2147483647。',
+                            '手机号/Account 保持数组格式，例如：{"18946512326": [10, 5]}。',
                           )}
                         </li>
-                        <li>{t('分组速率配置优先级高于全局速率限制。')}</li>
+                        <li>
+                          {t(
+                            '两个限制值都必须大于等于0，0表示对应维度不限制，最大值为2147483647。',
+                          )}
+                        </li>
+                        <li>{t('新组对象配置优先于全局速率限制。')}</li>
                         <li>{t('限制周期统一使用上方配置的“限制周期”值。')}</li>
                       </ul>
                     </div>
