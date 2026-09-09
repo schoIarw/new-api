@@ -155,7 +155,7 @@ const ModelDashboard = () => {
         params = { hours };
       }
 
-      const res = await API.get('/api/log/model_runtime_dashboard', { params });
+      const res = await API.get('/api/model-dashboard/metrics', { params });
       if (!res.data.success) {
         throw new Error(res.data.message || '获取模型运行指标失败');
       }
