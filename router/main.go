@@ -30,6 +30,7 @@ func SetRouter(router *gin.Engine, assets ClassicAssets) {
 		return
 	}
 	SetApiRouter(router)
+	SetModelRuntimeDashboardRouter(router)
 	SetDashboardRouter(router)
 	SetRelayRouter(router)
 	SetVideoRouter(router)
