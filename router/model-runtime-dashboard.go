@@ -7,14 +7,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// SetModelRuntimeDashboardRouter 注册模型运行看板专用接口。
-// 与现有 /api/log/model_dashboard（基于 logs 的旧统计接口）分离，避免改变原日志查询语义。
+// SetModelRuntimeDashboardRouter 注册模型看板专用接口。
+// 该接口仅访问 Prometheus，不属于日志查询链路，也不会读取 logs 表。
 func SetModelRuntimeDashboardRouter(router *gin.Engine) {
 	apiRouter := router.Group("/api")
 	apiRouter.Use(middleware.RouteTag("api"))
 	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
 	apiRouter.Use(middleware.GlobalAPIRateLimit())
 	{
-		apiRouter.GET("/log/model_runtime_dashboard", middleware.AdminAuth(), controller.GetVLLMModelRuntimeDashboard)
+		apiRouter.GET("/model-dashboard/metrics", middleware.AdminAuth(), controller.GetVLLMModelRuntimeDashboard)
 	}
 }
