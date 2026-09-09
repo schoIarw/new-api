@@ -66,9 +66,14 @@ const SiderBar = ({ onNavigate = () => {} }) => {
   } = useSidebar();
   const [statusState] = useContext(StatusContext);
 
-  const rateLimitDashboardEnabled = statusState?.status?.rate_limit_dashboard_enabled !== false;
-  const performanceDashboardEnabled = statusState?.status?.performance_dashboard_enabled !== false;
-  const mysqlDashboardEnabled = statusState?.status?.mysql_dashboard_enabled !== false;
+  const modelDashboardEnabled =
+    statusState?.status?.model_dashboard_enabled !== false;
+  const rateLimitDashboardEnabled =
+    statusState?.status?.rate_limit_dashboard_enabled !== false;
+  const performanceDashboardEnabled =
+    statusState?.status?.performance_dashboard_enabled !== false;
+  const mysqlDashboardEnabled =
+    statusState?.status?.mysql_dashboard_enabled !== false;
 
   const showSkeleton = useMinimumLoadingTime(sidebarLoading, 200);
 
@@ -93,25 +98,29 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('模型看板'),
         itemKey: 'model-dashboard',
         to: '/model-dashboard',
-        className: isAdmin() ? '' : 'tableHiddle',
+        className:
+          isAdmin() && modelDashboardEnabled ? '' : 'tableHiddle',
       },
       {
         text: t('限流看板'),
         itemKey: 'rate-limit',
         to: '/rate-limit',
-        className: isAdmin() && rateLimitDashboardEnabled ? '' : 'tableHiddle',
+        className:
+          isAdmin() && rateLimitDashboardEnabled ? '' : 'tableHiddle',
       },
       {
         text: t('性能看板'),
         itemKey: 'performance-dashboard',
         to: '/performance-dashboard',
-        className: isAdmin() && performanceDashboardEnabled ? '' : 'tableHiddle',
+        className:
+          isAdmin() && performanceDashboardEnabled ? '' : 'tableHiddle',
       },
       {
         text: t('DB 看板'),
         itemKey: 'mysql-dashboard',
         to: '/mysql-dashboard',
-        className: isAdmin() && mysqlDashboardEnabled ? '' : 'tableHiddle',
+        className:
+          isAdmin() && mysqlDashboardEnabled ? '' : 'tableHiddle',
       },
       {
         text: t('令牌管理'),
@@ -141,7 +150,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       },
     ];
 
-    // 根据配置过滤项目
     const filteredItems = items.filter((item) => {
       const configVisible = isModuleVisible('console', item.itemKey);
       return configVisible;
@@ -154,6 +162,10 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     localStorage.getItem('enable_task'),
     t,
     isModuleVisible,
+    modelDashboardEnabled,
+    rateLimitDashboardEnabled,
+    performanceDashboardEnabled,
+    mysqlDashboardEnabled,
   ]);
 
   const financeItems = useMemo(() => {
@@ -170,7 +182,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       },
     ];
 
-    // 根据配置过滤项目
     const filteredItems = items.filter((item) => {
       const configVisible = isModuleVisible('personal', item.itemKey);
       return configVisible;
@@ -225,7 +236,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       },
     ];
 
-    // 根据配置过滤项目
     const filteredItems = items.filter((item) => {
       const configVisible = isModuleVisible('admin', item.itemKey);
       return configVisible;
@@ -248,7 +258,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       },
     ];
 
-    // 根据配置过滤项目
     const filteredItems = items.filter((item) => {
       const configVisible = isModuleVisible('chat', item.itemKey);
       return configVisible;
@@ -257,7 +266,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     return filteredItems;
   }, [chatItems, t, isModuleVisible]);
 
-  // 更新路由映射，添加聊天路由
   const updateRouterMapWithChats = (chats) => {
     const newRouterMap = { ...routerMap };
 
@@ -271,7 +279,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     return newRouterMap;
   };
 
-  // 加载聊天项
   useEffect(() => {
     let chats = localStorage.getItem('chats');
     if (chats) {
@@ -284,7 +291,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
             let chat = {};
             for (let key in chats[i]) {
               let link = chats[i][key];
-              if (typeof link !== 'string') continue; // 确保链接是字符串
+              if (typeof link !== 'string') continue;
               if (
                 link.startsWith('fluent') ||
                 link.startsWith('ccswitch') ||
@@ -297,7 +304,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
               chat.itemKey = 'chat' + i;
               chat.to = '/console/chat/' + i;
             }
-            if (shouldSkip || !chat.text) continue; // 避免推入空项
+            if (shouldSkip || !chat.text) continue;
             chatItems.push(chat);
           }
           setChatItems(chatItems);
@@ -309,14 +316,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     }
   }, []);
 
-  // 根据当前路径设置选中的菜单项
   useEffect(() => {
     const currentPath = location.pathname;
     let matchingKey = Object.keys(routerMapState).find(
       (key) => routerMapState[key] === currentPath,
     );
 
-    // 处理聊天路由
     if (!matchingKey && currentPath.startsWith('/console/chat/')) {
       const chatIndex = currentPath.split('/').pop();
       if (!isNaN(chatIndex)) {
@@ -326,13 +331,11 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       }
     }
 
-    // 如果找到匹配的键，更新选中的键
     if (matchingKey) {
       setSelectedKeys([matchingKey]);
     }
   }, [location.pathname, routerMapState]);
 
-  // 监控折叠状态变化以更新 body class
   useEffect(() => {
     if (collapsed) {
       document.body.classList.add('sidebar-collapsed');
@@ -341,12 +344,9 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     }
   }, [collapsed]);
 
-  // 选中高亮颜色（统一）
   const SELECTED_COLOR = 'var(--semi-color-primary)';
 
-  // 渲染自定义菜单项
   const renderNavItem = (item) => {
-    // 跳过隐藏的项目
     if (item.className === 'tableHiddle') return null;
 
     const isSelected = selectedKeys.includes(item.itemKey);
@@ -374,7 +374,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     );
   };
 
-  // 渲染子菜单项
   const renderSubItem = (item) => {
     if (item.items && item.items.length > 0) {
       const isSelected = selectedKeys.includes(item.itemKey);
@@ -451,7 +450,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
             const to =
               routerMapState[props.itemKey] || routerMap[props.itemKey];
 
-            // 如果没有路由，直接返回元素
             if (!to) return itemElement;
 
             return (
@@ -465,7 +463,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
             );
           }}
           onSelect={(key) => {
-            // 如果点击的是已经展开的子菜单的父项，则收起子菜单
             if (openedKeys.includes(key.itemKey)) {
               setOpenedKeys(openedKeys.filter((k) => k !== key.itemKey));
             }
@@ -477,7 +474,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
             setOpenedKeys(data.openKeys);
           }}
         >
-          {/* 聊天区域 */}
           {hasSectionVisibleModules('chat') && (
             <div className='sidebar-section'>
               {!collapsed && (
@@ -487,7 +483,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
             </div>
           )}
 
-          {/* 控制台区域 */}
           {hasSectionVisibleModules('console') && (
             <>
               <Divider className='sidebar-divider' />
@@ -500,7 +495,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
             </>
           )}
 
-          {/* 个人中心区域 */}
           {hasSectionVisibleModules('personal') && (
             <>
               <Divider className='sidebar-divider' />
@@ -513,7 +507,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
             </>
           )}
 
-          {/* 管理员区域 - 只在管理员时显示且配置允许时显示 */}
           {isAdmin() && hasSectionVisibleModules('admin') && (
             <>
               <Divider className='sidebar-divider' />
@@ -528,7 +521,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         </Nav>
       </SkeletonWrapper>
 
-      {/* 底部折叠按钮 */}
       <div className='sidebar-collapse-button'>
         <SkeletonWrapper
           loading={showSkeleton}
