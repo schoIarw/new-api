@@ -47,20 +47,20 @@ type ModelRuntimeSeries struct {
 }
 
 type ModelRuntimeSummary struct {
-	ModelName          string  `json:"model_name"`
-	Running            float64 `json:"running"`
-	Waiting            float64 `json:"waiting"`
-	QueueAvgSeconds    float64 `json:"queue_avg_seconds"`
-	QueueP95Seconds    float64 `json:"queue_p95_seconds"`
-	PrefillTokensPerSec float64 `json:"prefill_tokens_per_sec"`
-	DecodeTokensPerSec  float64 `json:"decode_tokens_per_sec"`
-	PrefixCacheHitRate float64 `json:"prefix_cache_hit_rate"`
-	KVCacheUsage       float64 `json:"kv_cache_usage"`
-	TTFTP95Seconds     float64 `json:"ttft_p95_seconds"`
-	E2EP95Seconds      float64 `json:"e2e_p95_seconds"`
-	RequestPerSec      float64 `json:"request_per_sec"`
-	ErrorRate          float64 `json:"error_rate"`
-	PreemptionsPerMin  float64 `json:"preemptions_per_min"`
+	ModelName            string  `json:"model_name"`
+	Running              float64 `json:"running"`
+	Waiting              float64 `json:"waiting"`
+	QueueAvgSeconds      float64 `json:"queue_avg_seconds"`
+	QueueP95Seconds      float64 `json:"queue_p95_seconds"`
+	PrefillTokensPerSec  float64 `json:"prefill_tokens_per_sec"`
+	DecodeTokensPerSec   float64 `json:"decode_tokens_per_sec"`
+	PrefixCacheHitRate   float64 `json:"prefix_cache_hit_rate"`
+	KVCacheUsage         float64 `json:"kv_cache_usage"`
+	TTFTP95Seconds       float64 `json:"ttft_p95_seconds"`
+	E2EP95Seconds        float64 `json:"e2e_p95_seconds"`
+	RequestPerSec        float64 `json:"request_per_sec"`
+	ErrorRate            float64 `json:"error_rate"`
+	PreemptionsPerMin    float64 `json:"preemptions_per_min"`
 }
 
 type modelMetricDefinition struct {
@@ -247,6 +247,9 @@ func modelDashboardRateWindowSeconds(stepSeconds int64) int64 {
 
 func buildVLLMModelMetricDefinitions(job string, rateWindowSeconds int64) []modelMetricDefinition {
 	jobMatcher := fmt.Sprintf(`job="%s"`, escapePrometheusLabelValue(job))
+	// fmt.Sprintf 的模板是普通 PromQL label matcher；移除 Go 字符串转义后应为 job="value"。
+	jobMatcher = strings.ReplaceAll(jobMatcher, `\"`, `"`)
+
 	selector := func(extra string) string {
 		if extra == "" {
 			return "{" + jobMatcher + "}"
