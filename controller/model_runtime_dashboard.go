@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -47,20 +48,20 @@ type ModelRuntimeSeries struct {
 }
 
 type ModelRuntimeSummary struct {
-	ModelName            string  `json:"model_name"`
-	Running              float64 `json:"running"`
-	Waiting              float64 `json:"waiting"`
-	QueueAvgSeconds      float64 `json:"queue_avg_seconds"`
-	QueueP95Seconds      float64 `json:"queue_p95_seconds"`
-	PrefillTokensPerSec  float64 `json:"prefill_tokens_per_sec"`
-	DecodeTokensPerSec   float64 `json:"decode_tokens_per_sec"`
-	PrefixCacheHitRate   float64 `json:"prefix_cache_hit_rate"`
-	KVCacheUsage         float64 `json:"kv_cache_usage"`
-	TTFTP95Seconds       float64 `json:"ttft_p95_seconds"`
-	E2EP95Seconds        float64 `json:"e2e_p95_seconds"`
-	RequestPerSec        float64 `json:"request_per_sec"`
-	ErrorRate            float64 `json:"error_rate"`
-	PreemptionsPerMin    float64 `json:"preemptions_per_min"`
+	ModelName           string  `json:"model_name"`
+	Running             float64 `json:"running"`
+	Waiting             float64 `json:"waiting"`
+	QueueAvgSeconds     float64 `json:"queue_avg_seconds"`
+	QueueP95Seconds     float64 `json:"queue_p95_seconds"`
+	PrefillTokensPerSec float64 `json:"prefill_tokens_per_sec"`
+	DecodeTokensPerSec  float64 `json:"decode_tokens_per_sec"`
+	PrefixCacheHitRate  float64 `json:"prefix_cache_hit_rate"`
+	KVCacheUsage        float64 `json:"kv_cache_usage"`
+	TTFTP95Seconds      float64 `json:"ttft_p95_seconds"`
+	E2EP95Seconds       float64 `json:"e2e_p95_seconds"`
+	RequestPerSec       float64 `json:"request_per_sec"`
+	ErrorRate           float64 `json:"error_rate"`
+	PreemptionsPerMin   float64 `json:"preemptions_per_min"`
 }
 
 type modelMetricDefinition struct {
@@ -73,6 +74,14 @@ type modelMetricDefinition struct {
 // 历史模式：start_timestamp + end_timestamp，不限制查询跨度；后端会根据跨度自动放大 step，
 // 控制单条时序的点数，避免超长历史查询返回过多采样点。
 func GetVLLMModelRuntimeDashboard(c *gin.Context) {
+	if !operation_setting.GetDashboardSetting().ModelDashboardEnabled {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "模型看板已关闭，请在运营设置中启用模型看板",
+		})
+		return
+	}
+
 	prometheusURL := strings.TrimSpace(common.GetEnvOrDefaultString("PROMETHEUS_URL", ""))
 	if prometheusURL == "" {
 		c.JSON(http.StatusOK, gin.H{
