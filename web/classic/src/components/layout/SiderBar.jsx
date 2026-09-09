@@ -40,6 +40,7 @@ const routerMap = {
   user: '/console/user',
   subscription: '/console/subscription',
   log: '/console/log',
+  'model-dashboard': '/console/model-dashboard',
   'rate-limit': '/console/rate-limit',
   'performance-dashboard': '/console/performance-dashboard',
   'mysql-dashboard': '/console/mysql-dashboard',
@@ -87,6 +88,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
           localStorage.getItem('enable_data_export') === 'true'
             ? ''
             : 'tableHiddle',
+      },
+      {
+        text: t('模型看板'),
+        itemKey: 'model-dashboard',
+        to: '/model-dashboard',
+        className: isAdmin() ? '' : 'tableHiddle',
       },
       {
         text: t('限流看板'),
