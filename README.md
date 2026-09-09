@@ -335,6 +335,80 @@ docker run --name new-api -d --restart always \
 
 </details>
 
+### 📊 Model Dashboard / Prometheus Configuration
+
+New API provides a **Model Dashboard** (`/console/model-dashboard`) that visualizes real-time vLLM inference metrics (running requests, KV-cache usage, prefill/decode throughput, TTFT, E2E latency, etc.) by querying a Prometheus server.
+
+#### Prerequisites
+
+- A running **Prometheus** server that scrapes the `/metrics` endpoint exposed by your vLLM instance(s).
+- The model dashboard must be enabled in **Settings → Operation Settings → Dashboard → Model Dashboard** (enabled by default).
+
+#### Environment Variables
+
+| Variable Name | Description | Default Value |
+|--------|------|--------|
+| `PROMETHEUS_URL` | Prometheus server base URL, e.g. `http://prometheus:9090`. **Required** for the model dashboard. | - |
+| `VLLM_PROMETHEUS_JOB` | Prometheus `job` label under which vLLM `/metrics` are scraped. | `vllm-model-server` |
+| `PROMETHEUS_QUERY_TIMEOUT_SECONDS` | Timeout (seconds) for a single Prometheus query. | `15` |
+| `PROMETHEUS_BEARER_TOKEN` | Bearer token if Prometheus requires auth. Leave empty if no auth. | - |
+
+#### Example: docker-compose with Prometheus + vLLM
+
+The following example starts new-api together with a Prometheus instance scraping a vLLM server.
+
+```yaml
+services:
+  new-api:
+    image: calciumion/new-api:latest
+    container_name: new-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - SQL_DSN=root:123456@tcp(mysql:3306)/new-api
+      - REDIS_CONN_STRING=redis://:123456@redis:6379
+      - TZ=Asia/Shanghai
+      - PROMETHEUS_URL=http://prometheus:9090
+      - VLLM_PROMETHEUS_JOB=vllm-model-server
+    depends_on:
+      - mysql
+      - redis
+      - prometheus
+
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: vllm
+    restart: unless-stopped
+    # vLLM exposes Prometheus metrics on :8000/metrics by default
+    command: --model qwen3.6-35b --port 8000
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+```
+
+`prometheus.yml` scrape config:
+
+```yaml
+scrape_configs:
+  - job_name: "vllm-model-server"
+    static_configs:
+      - targets: ["vllm:8000"]
+```
+
+After starting, open **Console → Model Dashboard** to view the vLLM runtime metrics.
+
+> **Note:** Rate-based metrics (prefill/decode throughput, prefix-cache hit rate, TTFT/E2E P95) rely on Prometheus `rate()` calculations and require metrics to be collected over time. Gauge metrics (running/waiting requests, KV-cache usage) are available immediately after the first scrape.
+
 ### 🔧 Deployment Methods
 
 <details>

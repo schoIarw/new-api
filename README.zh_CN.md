@@ -334,6 +334,80 @@ docker run --name new-api -d --restart always \
 
 </details>
 
+### 📊 模型看板 / Prometheus 配置
+
+New API 提供 **模型看板**（`/console/model-dashboard`），通过查询 Prometheus 展示 vLLM 实时推理指标（运行任务数、KV-cache 使用率、Prefill/Decode 吞吐、TTFT、E2E 延迟等）。
+
+#### 前置条件
+
+- 已运行 **Prometheus** 服务，并采集了 vLLM 实例暴露的 `/metrics` 指标。
+- 在 **设置 → 运营设置 → 看板 → 模型看板** 中启用模型看板（默认启用）。
+
+#### 环境变量
+
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| `PROMETHEUS_URL` | Prometheus 服务地址，如 `http://prometheus:9090`。**模型看板必需**。 | - |
+| `VLLM_PROMETHEUS_JOB` | Prometheus 中采集 vLLM `/metrics` 的 job 名称。 | `vllm-model-server` |
+| `PROMETHEUS_QUERY_TIMEOUT_SECONDS` | 单次 Prometheus 查询超时时间（秒）。 | `15` |
+| `PROMETHEUS_BEARER_TOKEN` | Prometheus 如启用 Bearer Token 鉴权可配置；无鉴权时留空。 | - |
+
+#### 示例：docker-compose 编排 Prometheus + vLLM
+
+以下示例同时启动 new-api、Prometheus 以及一个 vLLM 服务。
+
+```yaml
+services:
+  new-api:
+    image: calciumion/new-api:latest
+    container_name: new-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - SQL_DSN=root:123456@tcp(mysql:3306)/new-api
+      - REDIS_CONN_STRING=redis://:123456@redis:6379
+      - TZ=Asia/Shanghai
+      - PROMETHEUS_URL=http://prometheus:9090
+      - VLLM_PROMETHEUS_JOB=vllm-model-server
+    depends_on:
+      - mysql
+      - redis
+      - prometheus
+
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: vllm
+    restart: unless-stopped
+    # vLLM 默认在 :8000/metrics 暴露 Prometheus 指标
+    command: --model qwen3.6-35b --port 8000
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+```
+
+`prometheus.yml` 抓取配置：
+
+```yaml
+scrape_configs:
+  - job_name: "vllm-model-server"
+    static_configs:
+      - targets: ["vllm:8000"]
+```
+
+启动后进入 **控制台 → 模型看板** 即可查看 vLLM 运行指标。
+
+> **说明：** 基于 `rate()` 的指标（Prefill/Decode 吞吐、Prefix 缓存命中率、TTFT/E2E P95）需要 Prometheus 持续采集一段时间后才有数值；Gauge 类指标（运行/排队任务数、KV-cache 使用率）在首次抓取后立即可见。
+
 ### 🔧 部署方式
 
 <details>
