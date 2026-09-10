@@ -17,19 +17,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useMemo, useState, useContext } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { getLucideIcon } from '../../helpers/render';
 import { ChevronLeft } from 'lucide-react';
+import { Button, Divider, Nav } from '@douyinfe/semi-ui';
+
+import { getLucideIcon } from '../../helpers/render';
+import { isAdmin, isRoot, showError } from '../../helpers';
+import { StatusContext } from '../../context/Status';
 import { useSidebarCollapsed } from '../../hooks/common/useSidebarCollapsed';
 import { useSidebar } from '../../hooks/common/useSidebar';
 import { useMinimumLoadingTime } from '../../hooks/common/useMinimumLoadingTime';
-import { isAdmin, isRoot, showError } from '../../helpers';
-import { StatusContext } from '../../context/Status';
 import SkeletonWrapper from './components/SkeletonWrapper';
-
-import { Nav, Divider, Button } from '@douyinfe/semi-ui';
 
 const routerMap = {
   home: '/',
@@ -78,7 +78,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     statusState?.status?.mysql_dashboard_enabled !== false;
 
   const showSkeleton = useMinimumLoadingTime(sidebarLoading, 200);
-
   const [selectedKeys, setSelectedKeys] = useState(['home']);
   const [chatItems, setChatItems] = useState([]);
   const [openedKeys, setOpenedKeys] = useState([]);
@@ -125,25 +124,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
           isAdmin() && mysqlDashboardEnabled ? '' : 'tableHiddle',
       },
       {
-        text: t('分组管理'),
-        itemKey: 'group-management',
-        iconKey: 'models',
-        to: '/group-management',
-        className: isRoot() ? '' : 'tableHiddle',
-      },
-      {
-        text: t('令牌管理'),
-        itemKey: 'token',
-        to: '/token',
-      },
-      {
-        text: t('限流管理'),
-        itemKey: 'rate-limit-management',
-        iconKey: 'rate-limit',
-        to: '/rate-limit-management',
-        className: isRoot() ? '' : 'tableHiddle',
-      },
-      {
         text: t('使用日志'),
         itemKey: 'log',
         to: '/log',
@@ -166,19 +146,13 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       },
     ];
 
-    const filteredItems = items.filter((item) => {
-      const configVisible = isModuleVisible('console', item.itemKey);
-      return configVisible;
-    });
-
-    return filteredItems;
+    return items.filter((item) => isModuleVisible('console', item.itemKey));
   }, [
     localStorage.getItem('enable_data_export'),
     localStorage.getItem('enable_drawing'),
     localStorage.getItem('enable_task'),
     t,
     isModuleVisible,
-    isRoot(),
     modelDashboardEnabled,
     rateLimitDashboardEnabled,
     performanceDashboardEnabled,
@@ -198,13 +172,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         to: '/personal',
       },
     ];
-
-    const filteredItems = items.filter((item) => {
-      const configVisible = isModuleVisible('personal', item.itemKey);
-      return configVisible;
-    });
-
-    return filteredItems;
+    return items.filter((item) => isModuleVisible('personal', item.itemKey));
   }, [t, isModuleVisible]);
 
   const adminItems = useMemo(() => {
@@ -214,6 +182,29 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         itemKey: 'channel',
         to: '/channel',
         className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('分组管理'),
+        itemKey: 'group-management',
+        iconKey: 'models',
+        to: '/group-management',
+        className: isRoot() ? '' : 'tableHiddle',
+        visibilitySection: 'console',
+      },
+      {
+        text: t('令牌管理'),
+        itemKey: 'token',
+        to: '/token',
+        className: isAdmin() ? '' : 'tableHiddle',
+        visibilitySection: 'console',
+      },
+      {
+        text: t('限流管理'),
+        itemKey: 'rate-limit-management',
+        iconKey: 'rate-limit',
+        to: '/rate-limit-management',
+        className: isRoot() ? '' : 'tableHiddle',
+        visibilitySection: 'console',
       },
       {
         text: t('订阅管理'),
@@ -253,12 +244,9 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       },
     ];
 
-    const filteredItems = items.filter((item) => {
-      const configVisible = isModuleVisible('admin', item.itemKey);
-      return configVisible;
-    });
-
-    return filteredItems;
+    return items.filter((item) =>
+      isModuleVisible(item.visibilitySection || 'admin', item.itemKey),
+    );
   }, [isAdmin(), isRoot(), t, isModuleVisible]);
 
   const chatMenuItems = useMemo(() => {
@@ -274,62 +262,54 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         items: chatItems,
       },
     ];
-
-    const filteredItems = items.filter((item) => {
-      const configVisible = isModuleVisible('chat', item.itemKey);
-      return configVisible;
-    });
-
-    return filteredItems;
+    return items.filter((item) => isModuleVisible('chat', item.itemKey));
   }, [chatItems, t, isModuleVisible]);
 
   const updateRouterMapWithChats = (chats) => {
     const newRouterMap = { ...routerMap };
-
     if (Array.isArray(chats) && chats.length > 0) {
       for (let i = 0; i < chats.length; i++) {
         newRouterMap['chat' + i] = '/console/chat/' + i;
       }
     }
-
     setRouterMapState(newRouterMap);
     return newRouterMap;
   };
 
   useEffect(() => {
     let chats = localStorage.getItem('chats');
-    if (chats) {
-      try {
-        chats = JSON.parse(chats);
-        if (Array.isArray(chats)) {
-          let chatItems = [];
-          for (let i = 0; i < chats.length; i++) {
-            let shouldSkip = false;
-            let chat = {};
-            for (let key in chats[i]) {
-              let link = chats[i][key];
-              if (typeof link !== 'string') continue;
-              if (
-                link.startsWith('fluent') ||
-                link.startsWith('ccswitch') ||
-                link.startsWith('deepchat')
-              ) {
-                shouldSkip = true;
-                break;
-              }
-              chat.text = key;
-              chat.itemKey = 'chat' + i;
-              chat.to = '/console/chat/' + i;
-            }
-            if (shouldSkip || !chat.text) continue;
-            chatItems.push(chat);
+    if (!chats) return;
+
+    try {
+      chats = JSON.parse(chats);
+      if (!Array.isArray(chats)) return;
+
+      const nextChatItems = [];
+      for (let i = 0; i < chats.length; i++) {
+        let shouldSkip = false;
+        const chat = {};
+        for (const key in chats[i]) {
+          const link = chats[i][key];
+          if (typeof link !== 'string') continue;
+          if (
+            link.startsWith('fluent') ||
+            link.startsWith('ccswitch') ||
+            link.startsWith('deepchat')
+          ) {
+            shouldSkip = true;
+            break;
           }
-          setChatItems(chatItems);
-          updateRouterMapWithChats(chats);
+          chat.text = key;
+          chat.itemKey = 'chat' + i;
+          chat.to = '/console/chat/' + i;
         }
-      } catch (e) {
-        showError('聊天数据解析失败');
+        if (shouldSkip || !chat.text) continue;
+        nextChatItems.push(chat);
       }
+      setChatItems(nextChatItems);
+      updateRouterMapWithChats(chats);
+    } catch (e) {
+      showError('聊天数据解析失败');
     }
   }, []);
 
@@ -341,11 +321,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
 
     if (!matchingKey && currentPath.startsWith('/console/chat/')) {
       const chatIndex = currentPath.split('/').pop();
-      if (!isNaN(chatIndex)) {
-        matchingKey = 'chat' + chatIndex;
-      } else {
-        matchingKey = 'chat';
-      }
+      matchingKey = !isNaN(chatIndex) ? 'chat' + chatIndex : 'chat';
     }
 
     if (matchingKey) {
@@ -392,60 +368,56 @@ const SiderBar = ({ onNavigate = () => {} }) => {
   };
 
   const renderSubItem = (item) => {
-    if (item.items && item.items.length > 0) {
-      const isSelected = selectedKeys.includes(item.itemKey);
-      const textColor = isSelected ? SELECTED_COLOR : 'inherit';
-
-      return (
-        <Nav.Sub
-          key={item.itemKey}
-          itemKey={item.itemKey}
-          text={
-            <span
-              className='truncate font-medium text-sm'
-              style={{ color: textColor }}
-            >
-              {item.text}
-            </span>
-          }
-          icon={
-            <div className='sidebar-icon-container flex-shrink-0'>
-              {getLucideIcon(item.iconKey || item.itemKey, isSelected)}
-            </div>
-          }
-        >
-          {item.items.map((subItem) => {
-            const isSubSelected = selectedKeys.includes(subItem.itemKey);
-            const subTextColor = isSubSelected ? SELECTED_COLOR : 'inherit';
-
-            return (
-              <Nav.Item
-                key={subItem.itemKey}
-                itemKey={subItem.itemKey}
-                text={
-                  <span
-                    className='truncate font-medium text-sm'
-                    style={{ color: subTextColor }}
-                  >
-                    {subItem.text}
-                  </span>
-                }
-              />
-            );
-          })}
-        </Nav.Sub>
-      );
-    } else {
+    if (!item.items || item.items.length === 0) {
       return renderNavItem(item);
     }
+
+    const isSelected = selectedKeys.includes(item.itemKey);
+    const textColor = isSelected ? SELECTED_COLOR : 'inherit';
+    return (
+      <Nav.Sub
+        key={item.itemKey}
+        itemKey={item.itemKey}
+        text={
+          <span
+            className='truncate font-medium text-sm'
+            style={{ color: textColor }}
+          >
+            {item.text}
+          </span>
+        }
+        icon={
+          <div className='sidebar-icon-container flex-shrink-0'>
+            {getLucideIcon(item.iconKey || item.itemKey, isSelected)}
+          </div>
+        }
+      >
+        {item.items.map((subItem) => {
+          const isSubSelected = selectedKeys.includes(subItem.itemKey);
+          const subTextColor = isSubSelected ? SELECTED_COLOR : 'inherit';
+          return (
+            <Nav.Item
+              key={subItem.itemKey}
+              itemKey={subItem.itemKey}
+              text={
+                <span
+                  className='truncate font-medium text-sm'
+                  style={{ color: subTextColor }}
+                >
+                  {subItem.text}
+                </span>
+              }
+            />
+          );
+        })}
+      </Nav.Sub>
+    );
   };
 
   return (
     <div
       className='sidebar-container'
-      style={{
-        width: 'var(--sidebar-current-width)',
-      }}
+      style={{ width: 'var(--sidebar-current-width)' }}
     >
       <SkeletonWrapper
         loading={showSkeleton}
@@ -466,9 +438,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
           renderWrapper={({ itemElement, props }) => {
             const to =
               routerMapState[props.itemKey] || routerMap[props.itemKey];
-
             if (!to) return itemElement;
-
             return (
               <Link
                 style={{ textDecoration: 'none' }}
@@ -483,13 +453,10 @@ const SiderBar = ({ onNavigate = () => {} }) => {
             if (openedKeys.includes(key.itemKey)) {
               setOpenedKeys(openedKeys.filter((k) => k !== key.itemKey));
             }
-
             setSelectedKeys([key.itemKey]);
           }}
           openKeys={openedKeys}
-          onOpenChange={(data) => {
-            setOpenedKeys(data.openKeys);
-          }}
+          onOpenChange={(data) => setOpenedKeys(data.openKeys)}
         >
           {hasSectionVisibleModules('chat') && (
             <div className='sidebar-section'>
