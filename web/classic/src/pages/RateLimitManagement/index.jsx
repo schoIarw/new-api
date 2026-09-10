@@ -114,13 +114,31 @@ const RateLimitManagement = () => {
     return filteredModels.slice(start, start + modelPageSize);
   }, [filteredModels, modelPage, modelPageSize]);
 
-  const modelCountByCategory = useMemo(() => {
+  const modelsByCategory = useMemo(() => {
     const result = {};
+    CATEGORY_KEYS.forEach((key) => {
+      result[key] = [];
+    });
     models.forEach((item) => {
-      if (item.category) result[item.category] = (result[item.category] || 0) + 1;
+      const category = item.category;
+      const modelName = String(item.model_name || '').trim();
+      if (!category || !modelName) return;
+      if (!result[category]) result[category] = [];
+      result[category].push(modelName);
+    });
+    Object.keys(result).forEach((key) => {
+      result[key].sort((a, b) => a.localeCompare(b));
     });
     return result;
   }, [models]);
+
+  const modelCountByCategory = useMemo(() => {
+    const result = {};
+    Object.entries(modelsByCategory).forEach(([category, categoryModels]) => {
+      result[category] = categoryModels.length;
+    });
+    return result;
+  }, [modelsByCategory]);
 
   const saveDefaults = async () => {
     setLoading(true);
@@ -191,7 +209,10 @@ const RateLimitManagement = () => {
         });
       });
     });
-    return rows.sort((a, b) => a.group.localeCompare(b.group) || a.model_name.localeCompare(b.model_name));
+    return rows.sort(
+      (a, b) =>
+        a.group.localeCompare(b.group) || a.model_name.localeCompare(b.model_name),
+    );
   }, [specialLimits]);
 
   const persistSpecialLimits = async (nextLimits) => {
@@ -258,11 +279,32 @@ const RateLimitManagement = () => {
   };
 
   const categoryColumns = [
-    { title: '模型分类', dataIndex: 'name', width: 160 },
+    { title: '模型分类', dataIndex: 'name', width: 120 },
     {
       title: '模型数',
-      render: (_, row) => <Tag color='blue'>{modelCountByCategory[row.key] || 0}</Tag>,
-      width: 100,
+      render: (_, row) => (
+        <Tag color='blue'>{modelCountByCategory[row.key] || 0}</Tag>
+      ),
+      width: 90,
+    },
+    {
+      title: '归属模型',
+      render: (_, row) => {
+        const categoryModels = modelsByCategory[row.key] || [];
+        if (!categoryModels.length) {
+          return <Text type='tertiary'>暂无模型</Text>;
+        }
+        return (
+          <div className='flex flex-wrap gap-1 py-1'>
+            {categoryModels.map((modelName) => (
+              <Tag key={`${row.key}-${modelName}`} color='grey'>
+                {modelName}
+              </Tag>
+            ))}
+          </div>
+        );
+      },
+      width: 360,
     },
     {
       title: '每周期最多请求数',
@@ -279,6 +321,7 @@ const RateLimitManagement = () => {
           style={{ width: 160 }}
         />
       ),
+      width: 190,
     },
     {
       title: '每周期最多完成数',
@@ -295,6 +338,7 @@ const RateLimitManagement = () => {
           style={{ width: 160 }}
         />
       ),
+      width: 190,
     },
   ];
 
@@ -307,7 +351,9 @@ const RateLimitManagement = () => {
       render: (category, row) => (
         <Select
           value={category || ''}
-          onChange={(value) => changeModelCategory(row.model_name, value || '')}
+          onChange={(value) =>
+            changeModelCategory(row.model_name, value || '')
+          }
           optionList={[
             { label: '未分类', value: '' },
             ...categories.map((item) => ({ label: item.name, value: item.key })),
@@ -328,8 +374,12 @@ const RateLimitManagement = () => {
       width: 180,
       render: (_, row) => (
         <Space>
-          <Button size='small' onClick={() => openSpecialModal(row)}>编辑</Button>
-          <Button size='small' type='danger' onClick={() => deleteSpecialRow(row)}>删除</Button>
+          <Button size='small' onClick={() => openSpecialModal(row)}>
+            编辑
+          </Button>
+          <Button size='small' type='danger' onClick={() => deleteSpecialRow(row)}>
+            删除
+          </Button>
         </Space>
       ),
     },
@@ -344,7 +394,11 @@ const RateLimitManagement = () => {
             <div className='flex items-center gap-2'>
               <Gauge size={18} />
               <span>限流管理</span>
-              {data?.managed_enabled ? <Tag color='green'>界面化策略已启用</Tag> : <Tag color='grey'>尚未启用界面化策略</Tag>}
+              {data?.managed_enabled ? (
+                <Tag color='green'>界面化策略已启用</Tag>
+              ) : (
+                <Tag color='grey'>尚未启用界面化策略</Tag>
+              )}
             </div>
           }
         >
@@ -357,7 +411,9 @@ const RateLimitManagement = () => {
                     <div className='mt-2'>
                       <Switch
                         checked={defaults.enabled}
-                        onChange={(value) => setDefaults((prev) => ({ ...prev, enabled: value }))}
+                        onChange={(value) =>
+                          setDefaults((prev) => ({ ...prev, enabled: value }))
+                        }
                       />
                     </div>
                   </div>
@@ -367,7 +423,12 @@ const RateLimitManagement = () => {
                       <InputNumber
                         min={1}
                         value={defaults.duration_minutes}
-                        onChange={(value) => setDefaults((prev) => ({ ...prev, duration_minutes: Number(value) || 1 }))}
+                        onChange={(value) =>
+                          setDefaults((prev) => ({
+                            ...prev,
+                            duration_minutes: Number(value) || 1,
+                          }))
+                        }
                         style={{ width: 150 }}
                       />
                     </div>
@@ -378,7 +439,12 @@ const RateLimitManagement = () => {
                       <InputNumber
                         min={0}
                         value={defaults.total_count}
-                        onChange={(value) => setDefaults((prev) => ({ ...prev, total_count: Number(value) || 0 }))}
+                        onChange={(value) =>
+                          setDefaults((prev) => ({
+                            ...prev,
+                            total_count: Number(value) || 0,
+                          }))
+                        }
                         style={{ width: 170 }}
                       />
                     </div>
@@ -389,18 +455,27 @@ const RateLimitManagement = () => {
                       <InputNumber
                         min={0}
                         value={defaults.success_count}
-                        onChange={(value) => setDefaults((prev) => ({ ...prev, success_count: Number(value) || 0 }))}
+                        onChange={(value) =>
+                          setDefaults((prev) => ({
+                            ...prev,
+                            success_count: Number(value) || 0,
+                          }))
+                        }
                         style={{ width: 170 }}
                       />
                     </div>
                   </div>
-                  <Button type='primary' onClick={saveDefaults}>保存基础设置</Button>
+                  <Button type='primary' onClick={saveDefaults}>
+                    保存基础设置
+                  </Button>
                 </div>
               </Card>
 
               <Card className='!rounded-xl mb-3' title='模型分类'>
                 <div className='flex items-center justify-between mb-3 gap-3'>
-                  <Text type='tertiary'>一个模型最多属于快速 / 旗舰 / 专用中的一个分类；分类变更会自动重新生成限流 JSON。</Text>
+                  <Text type='tertiary'>
+                    一个模型最多属于快速 / 旗舰 / 专用中的一个分类；分类变更会自动重新生成限流 JSON。
+                  </Text>
                   <Input
                     value={modelKeyword}
                     onChange={(value) => {
@@ -412,7 +487,12 @@ const RateLimitManagement = () => {
                     style={{ width: 240 }}
                   />
                 </div>
-                <Table columns={modelColumns} dataSource={pagedModels} rowKey='model_name' pagination={false} />
+                <Table
+                  columns={modelColumns}
+                  dataSource={pagedModels}
+                  rowKey='model_name'
+                  pagination={false}
+                />
                 <div className='flex justify-end mt-3'>
                   <Pagination
                     currentPage={modelPage}
@@ -434,28 +514,48 @@ const RateLimitManagement = () => {
                   分类规则会展开到所有现有分组；[0,0] 表示该分类不设置基础限制。特殊配置可覆盖指定分组/模型。
                 </Text>
                 <div className='mt-3'>
-                  <Table columns={categoryColumns} dataSource={categories} rowKey='key' pagination={false} />
+                  <Table
+                    columns={categoryColumns}
+                    dataSource={categories}
+                    rowKey='key'
+                    pagination={false}
+                  />
                 </div>
                 <div className='flex justify-end mt-3'>
-                  <Button type='primary' onClick={saveCategoryLimits}>保存并生成限流配置</Button>
+                  <Button type='primary' onClick={saveCategoryLimits}>
+                    保存并生成限流配置
+                  </Button>
                 </div>
               </Card>
             </Tabs.TabPane>
 
             <Tabs.TabPane tab='特殊限流配置' itemKey='special'>
               <div className='flex items-center justify-between mb-3'>
-                <Text type='tertiary'>针对指定“分组 + 模型”覆盖通用分类限流；设置 [0,0] 可显式取消该模型在该分组的基础限制。</Text>
-                <Button type='primary' icon={<Tags size={16} />} onClick={() => openSpecialModal()}>
+                <Text type='tertiary'>
+                  针对指定“分组 + 模型”覆盖通用分类限流；设置 [0,0] 可显式取消该模型在该分组的基础限制。
+                </Text>
+                <Button
+                  type='primary'
+                  icon={<Tags size={16} />}
+                  onClick={() => openSpecialModal()}
+                >
                   新增特殊配置
                 </Button>
               </div>
-              <Table columns={specialColumns} dataSource={specialRows} rowKey='key' pagination={false} />
+              <Table
+                columns={specialColumns}
+                dataSource={specialRows}
+                rowKey='key'
+                pagination={false}
+              />
             </Tabs.TabPane>
           </Tabs>
         </Card>
 
         <Card className='!rounded-2xl mt-3' title='当前兼容限流 JSON'>
-          <Text type='tertiary'>该 JSON 为运行时最终配置，继续兼容现有 ModelRequestRateLimitGroup 规范；手机号/Account 顶层数组配置会保留。</Text>
+          <Text type='tertiary'>
+            该 JSON 为运行时最终配置，继续兼容现有 ModelRequestRateLimitGroup 规范；手机号/Account 顶层数组配置会保留。
+          </Text>
           <TextArea
             className='mt-3'
             value={data?.generated_json || '{}'}
@@ -476,8 +576,13 @@ const RateLimitManagement = () => {
             <Text type='tertiary'>分组</Text>
             <Select
               value={specialForm.group}
-              onChange={(value) => setSpecialForm((prev) => ({ ...prev, group: value }))}
-              optionList={(data?.groups || []).map((group) => ({ label: group, value: group }))}
+              onChange={(value) =>
+                setSpecialForm((prev) => ({ ...prev, group: value }))
+              }
+              optionList={(data?.groups || []).map((group) => ({
+                label: group,
+                value: group,
+              }))}
               filter
               style={{ width: '100%', marginTop: 8 }}
               disabled={Boolean(specialEditing)}
@@ -487,8 +592,13 @@ const RateLimitManagement = () => {
             <Text type='tertiary'>模型</Text>
             <Select
               value={specialForm.model_name}
-              onChange={(value) => setSpecialForm((prev) => ({ ...prev, model_name: value }))}
-              optionList={models.map((item) => ({ label: item.model_name, value: item.model_name }))}
+              onChange={(value) =>
+                setSpecialForm((prev) => ({ ...prev, model_name: value }))
+              }
+              optionList={models.map((item) => ({
+                label: item.model_name,
+                value: item.model_name,
+              }))}
               filter
               style={{ width: '100%', marginTop: 8 }}
               disabled={Boolean(specialEditing)}
@@ -500,7 +610,12 @@ const RateLimitManagement = () => {
               <InputNumber
                 min={0}
                 value={specialForm.total}
-                onChange={(value) => setSpecialForm((prev) => ({ ...prev, total: Number(value) || 0 }))}
+                onChange={(value) =>
+                  setSpecialForm((prev) => ({
+                    ...prev,
+                    total: Number(value) || 0,
+                  }))
+                }
                 style={{ width: '100%', marginTop: 8 }}
               />
             </div>
@@ -509,7 +624,12 @@ const RateLimitManagement = () => {
               <InputNumber
                 min={0}
                 value={specialForm.success}
-                onChange={(value) => setSpecialForm((prev) => ({ ...prev, success: Number(value) || 0 }))}
+                onChange={(value) =>
+                  setSpecialForm((prev) => ({
+                    ...prev,
+                    success: Number(value) || 0,
+                  }))
+                }
                 style={{ width: '100%', marginTop: 8 }}
               />
             </div>
