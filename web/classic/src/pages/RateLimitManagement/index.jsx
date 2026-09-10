@@ -288,25 +288,6 @@ const RateLimitManagement = () => {
       width: 90,
     },
     {
-      title: '归属模型',
-      render: (_, row) => {
-        const categoryModels = modelsByCategory[row.key] || [];
-        if (!categoryModels.length) {
-          return <Text type='tertiary'>暂无模型</Text>;
-        }
-        return (
-          <div className='flex flex-wrap gap-1 py-1'>
-            {categoryModels.map((modelName) => (
-              <Tag key={`${row.key}-${modelName}`} color='grey'>
-                {modelName}
-              </Tag>
-            ))}
-          </div>
-        );
-      },
-      width: 360,
-    },
-    {
       title: '每周期最多请求数',
       render: (_, row) => (
         <InputNumber
@@ -339,6 +320,25 @@ const RateLimitManagement = () => {
         />
       ),
       width: 190,
+    },
+    {
+      title: '归属模型',
+      render: (_, row) => {
+        const categoryModels = modelsByCategory[row.key] || [];
+        if (!categoryModels.length) {
+          return <Text type='tertiary'>暂无模型</Text>;
+        }
+        return (
+          <div className='flex flex-wrap gap-1 py-1'>
+            {categoryModels.map((modelName) => (
+              <Tag key={`${row.key}-${modelName}`} color='grey'>
+                {modelName}
+              </Tag>
+            ))}
+          </div>
+        );
+      },
+      width: 360,
     },
   ];
 
