@@ -18,7 +18,18 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Card, Select, Spin, Tag, Typography, Empty, Input, DatePicker, RadioGroup, Radio } from '@douyinfe/semi-ui';
+import {
+  Card,
+  Select,
+  Spin,
+  Tag,
+  Typography,
+  Empty,
+  Input,
+  DatePicker,
+  RadioGroup,
+  Radio,
+} from '@douyinfe/semi-ui';
 import { VChart } from '@visactor/react-vchart';
 import { initVChartSemiTheme } from '@visactor/vchart-semi-theme';
 import { Gauge } from 'lucide-react';
@@ -32,16 +43,15 @@ const REFRESH_INTERVAL_MS = 10000;
 const COLOR_RATE_LIMITED = '#ef4444';
 const COLOR_NORMAL = '#3b82f6';
 
-// 实时模式周期选项：覆盖 1/2/4 小时的周期数
-function buildPeriodOptions(durationMinutes) {
-  const dm = durationMinutes > 0 ? durationMinutes : 10;
-  const periodsPerHour = Math.max(1, Math.floor(60 / dm));
-  const hourMultipliers = [1, 2, 4];
-  return hourMultipliers.map((h) => {
-    const value = periodsPerHour * h;
-    return { label: `最近 ${h} 小时`, value };
-  });
-}
+const PERIOD_VALUES = [10, 20, 40, 80];
+const REALTIME_PERIOD_OPTIONS = PERIOD_VALUES.map((value) => ({
+  label: `最近 ${value} 周期`,
+  value,
+}));
+const HISTORICAL_PERIOD_OPTIONS = PERIOD_VALUES.map((value) => ({
+  label: `${value} 个周期`,
+  value,
+}));
 
 // 刷新频率选项
 const REFRESH_OPTIONS = [
@@ -50,9 +60,10 @@ const REFRESH_OPTIONS = [
   { label: '高 (10秒)', value: 10 },
 ];
 const DEFAULT_REFRESH = 30;
+const DEFAULT_PERIODS = 10;
 
-// 周期标签：实时模式显示"前 N 周期"，历史模式显示时间范围
-function periodLabel(periodIndex, durationMinutes, startTimestamp, isHistorical) {
+// 周期标签：实时模式显示“前 N 周期”，历史模式显示周期开始时间。
+function periodLabel(periodIndex, startTimestamp, isHistorical) {
   if (isHistorical && startTimestamp) {
     const d = new Date(startTimestamp * 1000);
     const mmd = String(d.getMonth() + 1).padStart(2, '0');
@@ -62,28 +73,25 @@ function periodLabel(periodIndex, durationMinutes, startTimestamp, isHistorical)
     return `${mmd}-${dd} ${hh}:${mm}`;
   }
   if (periodIndex === 0) return '当前周期';
-  if (durationMinutes >= 60 && durationMinutes % 60 === 0) {
-    const hours = durationMinutes / 60;
-    return `前 ${periodIndex * hours} 小时`;
-  }
   return `前 ${periodIndex} 周期`;
 }
 
 const RateLimitDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState('realtime');
-  const [periods, setPeriods] = useState(0);
-  const [dateRange, setDateRange] = useState([]);
+  const [periods, setPeriods] = useState(DEFAULT_PERIODS);
+  const [historyStart, setHistoryStart] = useState(null);
+  const [historyPeriods, setHistoryPeriods] = useState(DEFAULT_PERIODS);
   const [chartData, setChartData] = useState([]);
   const [durationMinutes, setDurationMinutes] = useState(10);
   const [summary, setSummary] = useState({ total: 0, limited: 0 });
-  const [initialized, setInitialized] = useState(false);
   const [filterKey, setFilterKey] = useState('');
   const [filterAccount, setFilterAccount] = useState('');
   const [refreshInterval, setRefreshInterval] = useState(DEFAULT_REFRESH);
   const refreshTimerRef = useRef(null);
 
   const isHistorical = mode === 'historical';
+  const selectedPeriodCount = isHistorical ? historyPeriods : periods;
 
   const keyOptions = useMemo(() => {
     const set = new Set();
@@ -116,36 +124,44 @@ const RateLimitDashboard = () => {
     [filteredChartData],
   );
 
-  const periodsPerHour = Math.max(1, Math.floor(60 / (durationMinutes || 10)));
-  const periodOptions = useMemo(
-    () => buildPeriodOptions(durationMinutes),
-    [durationMinutes],
-  );
-
   useEffect(() => {
     initVChartSemiTheme({ isWatchingThemeSwitch: true });
   }, []);
 
-  // 拉取数据（新 API 返回 periods 数组）
+  const handleModeChange = useCallback(
+    (e) => {
+      const nextMode = e.target.value;
+      if (nextMode === 'historical' && !historyStart) {
+        // 第一次进入历史模式时给一个合理默认开始时间：当前时间向前 N 个限流周期。
+        // 用户仍可直接修改开始时间；结束时间始终由服务端按周期数推导。
+        setHistoryStart(
+          new Date(
+            Date.now() -
+              historyPeriods * Math.max(1, durationMinutes) * 60 * 1000,
+          ),
+        );
+      }
+      setMode(nextMode);
+    },
+    [historyStart, historyPeriods, durationMinutes],
+  );
+
+  // 拉取数据。实时模式只传 periods；历史模式只传 start_timestamp + periods。
   const loadData = useCallback(async () => {
+    if (isHistorical && !historyStart) {
+      setChartData([]);
+      setSummary({ total: 0, limited: 0 });
+      return;
+    }
+
     setLoading(true);
     try {
-      let params = {};
-      if (isHistorical && dateRange && dateRange.length === 2) {
-        const startTs = Math.floor(dateRange[0].getTime() / 1000);
-        const endTs = Math.floor(dateRange[1].getTime() / 1000);
-        if (endTs - startTs > 48 * 3600) {
-          showError('历史查询时间范围不能超过48小时');
-          return;
-        }
-        params = {
-          start_timestamp: startTs,
-          end_timestamp: endTs,
-        };
-      } else {
-        const p = Math.max(1, periods);
-        params = { periods: p };
-      }
+      const params = isHistorical
+        ? {
+            start_timestamp: Math.floor(historyStart.getTime() / 1000),
+            periods: historyPeriods,
+          }
+        : { periods };
 
       const res = await API.get('/api/log/rate_limit_dashboard', { params });
       if (!res.data.success) {
@@ -153,18 +169,20 @@ const RateLimitDashboard = () => {
       }
 
       const data = res.data.data;
-      const periodList = (data.periods || []).slice().reverse(); // 最旧在前，最新在后
+      // 服务端实时模式为了保留 period_index=0 表示“当前周期”，返回顺序是新到旧；
+      // 历史模式则从开始时间向后。这里统一按开始时间排序，保证图表左旧右新。
+      const periodList = [...(data.periods || [])].sort(
+        (a, b) => (a.start_timestamp || 0) - (b.start_timestamp || 0),
+      );
       const dm = data.duration_minutes || 10;
       setDurationMinutes(dm);
 
-      // periodList 按时间从早到晚排列（period_index 递增）
-      // 图表需要从左到右时间推进，所以正序即可
       const rows = [];
       const limitedSet = new Set();
       const keys = new Set();
 
       periodList.forEach((p) => {
-        p.items.forEach((item) => {
+        (p.items || []).forEach((item) => {
           const key = `${item.token_name}||${item.account}`;
           keys.add(key);
           if (item.rate_limited) limitedSet.add(key);
@@ -172,9 +190,9 @@ const RateLimitDashboard = () => {
       });
 
       periodList.forEach((p) => {
-        const label = periodLabel(p.period_index, dm, p.start_timestamp, isHistorical);
+        const label = periodLabel(p.period_index, p.start_timestamp, isHistorical);
         const map = new Map();
-        p.items.forEach((item) => {
+        (p.items || []).forEach((item) => {
           map.set(`${item.token_name}||${item.account}`, item);
         });
         keys.forEach((key) => {
@@ -198,19 +216,12 @@ const RateLimitDashboard = () => {
 
       setChartData(rows);
       setSummary({ total: keys.size, limited: limitedSet.size });
-
-      // 首次加载：设置默认周期数为最近 1 小时
-      if (!initialized) {
-        const pph = Math.max(1, Math.floor(60 / dm));
-        setPeriods(pph * 1);
-        setInitialized(true);
-      }
     } catch (e) {
       showError(e.message || '获取限流看板数据失败');
     } finally {
       setLoading(false);
     }
-  }, [periods, isHistorical, dateRange, initialized]);
+  }, [periods, isHistorical, historyStart, historyPeriods]);
 
   useEffect(() => {
     loadData();
@@ -260,7 +271,7 @@ const RateLimitDashboard = () => {
       title: {
         visible: true,
         text: 'Token名 / Account 请求数趋势',
-        subtext: `限流周期：${durationMinutes} 分钟${isHistorical ? ' ｜ 历史数据' : ''}`,
+        subtext: `限流周期：${durationMinutes} 分钟 ｜ 查询：${selectedPeriodCount} 个周期${isHistorical ? ' ｜ 历史数据' : ''}`,
       },
       line: { style: { lineWidth: 2 } },
       point: {
@@ -304,7 +315,10 @@ const RateLimitDashboard = () => {
       },
       axes: [
         { orient: 'left', title: { visible: true, text: '完成请求数' } },
-        { orient: 'bottom', title: { visible: true, text: isHistorical ? '周期时间' : '周期' } },
+        {
+          orient: 'bottom',
+          title: { visible: true, text: isHistorical ? '周期时间' : '周期' },
+        },
       ],
       tooltip: {
         mark: {
@@ -326,7 +340,7 @@ const RateLimitDashboard = () => {
       },
       color: { specified: colorMap },
     };
-  }, [filteredChartData, durationMinutes, isHistorical]);
+  }, [filteredChartData, durationMinutes, isHistorical, selectedPeriodCount]);
 
   return (
     <div className='mt-[60px] px-2'>
@@ -343,28 +357,32 @@ const RateLimitDashboard = () => {
                 </Tag>
               </div>
               <div className='flex flex-wrap items-center gap-2'>
-                <RadioGroup
-                  type='button'
-                  value={mode}
-                  onChange={(e) => setMode(e.target.value)}
-                >
+                <RadioGroup type='button' value={mode} onChange={handleModeChange}>
                   <Radio value='realtime'>实时</Radio>
                   <Radio value='historical'>历史</Radio>
                 </RadioGroup>
                 {isHistorical ? (
-                  <DatePicker
-                    type='dateTimeRange'
-                    value={dateRange}
-                    onChange={(v) => setDateRange(v || [])}
-                    placeholder={['开始时间', '结束时间']}
-                    style={{ width: 320 }}
-                  />
+                  <>
+                    <DatePicker
+                      type='dateTime'
+                      value={historyStart}
+                      onChange={(v) => setHistoryStart(v || null)}
+                      placeholder='开始时间'
+                      style={{ width: 200 }}
+                    />
+                    <Select
+                      value={historyPeriods}
+                      onChange={(v) => setHistoryPeriods(v)}
+                      optionList={HISTORICAL_PERIOD_OPTIONS}
+                      style={{ width: 130 }}
+                    />
+                  </>
                 ) : (
                   <>
                     <Select
                       value={periods}
                       onChange={(v) => setPeriods(v)}
-                      optionList={periodOptions}
+                      optionList={REALTIME_PERIOD_OPTIONS}
                       style={{ width: 140 }}
                     />
                     <Select
@@ -376,7 +394,9 @@ const RateLimitDashboard = () => {
                   </>
                 )}
                 {isHistorical ? (
-                  <Tag color='grey' size='small'>历史数据</Tag>
+                  <Tag color='grey' size='small'>
+                    从开始时间连续 {historyPeriods} 周期
+                  </Tag>
                 ) : (
                   <Tag color='blue' size='small'>自动刷新中</Tag>
                 )}
@@ -402,7 +422,7 @@ const RateLimitDashboard = () => {
                 <Tag color='orange' size='small'>
                   至少输入 7 位 Account 后才执行筛选
                 </Tag>
-              ) : (filterKey || filterAccount) ? (
+              ) : filterKey || filterAccount ? (
                 <Tag color='light-blue' size='small'>
                   命中 {filteredSeriesCount} 条曲线
                 </Tag>
