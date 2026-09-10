@@ -33,6 +33,8 @@ import PasswordResetForm from './components/auth/PasswordResetForm';
 import PasswordResetConfirm from './components/auth/PasswordResetConfirm';
 import Channel from './pages/Channel';
 import Token from './pages/Token';
+import GroupManagement from './pages/GroupManagement';
+import RateLimitManagement from './pages/RateLimitManagement';
 import Redemption from './pages/Redemption';
 import TopUp from './pages/TopUp';
 import Log from './pages/Log';
@@ -144,11 +146,27 @@ function App() {
           }
         />
         <Route
+          path='/console/group-management'
+          element={
+            <AdminRoute>
+              <GroupManagement />
+            </AdminRoute>
+          }
+        />
+        <Route
           path='/console/token'
           element={
             <PrivateRoute>
               <Token />
             </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/rate-limit-management'
+          element={
+            <AdminRoute>
+              <RateLimitManagement />
+            </AdminRoute>
           }
         />
         <Route
