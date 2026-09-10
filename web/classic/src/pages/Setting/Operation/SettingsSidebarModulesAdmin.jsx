@@ -17,150 +17,139 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Card,
-  Form,
   Button,
-  Switch,
-  Row,
+  Card,
   Col,
+  Form,
+  Row,
+  Switch,
   Typography,
 } from '@douyinfe/semi-ui';
-import { API, showSuccess, showError } from '../../../helpers';
+import { API, showError, showSuccess } from '../../../helpers';
 import { StatusContext } from '../../../context/Status';
 
 const { Text } = Typography;
+
+const DEFAULT_MODULES = {
+  chat: {
+    enabled: true,
+    playground: true,
+    chat: true,
+  },
+  console: {
+    enabled: true,
+    detail: true,
+    'model-dashboard': true,
+    'rate-limit': true,
+    'performance-dashboard': true,
+    'mysql-dashboard': true,
+    // These three keys stay in console for backward-compatible storage.
+    // They are rendered under the administrator section in the UI/sidebar.
+    'group-management': true,
+    token: true,
+    'rate-limit-management': true,
+    log: true,
+    midjourney: true,
+    task: true,
+  },
+  personal: {
+    enabled: true,
+    topup: true,
+    personal: true,
+  },
+  admin: {
+    enabled: true,
+    channel: true,
+    models: true,
+    deployment: true,
+    redemption: true,
+    user: true,
+    subscription: true,
+    setting: true,
+  },
+};
+
+const cloneDefaultModules = () => JSON.parse(JSON.stringify(DEFAULT_MODULES));
+
+const mergeModules = (saved) => {
+  const merged = cloneDefaultModules();
+  if (!saved || typeof saved !== 'object') return merged;
+
+  Object.entries(saved).forEach(([sectionKey, sectionValue]) => {
+    if (!sectionValue || typeof sectionValue !== 'object') return;
+    merged[sectionKey] = {
+      ...(merged[sectionKey] || {}),
+      ...sectionValue,
+    };
+  });
+  return merged;
+};
 
 export default function SettingsSidebarModulesAdmin(props) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [statusState, statusDispatch] = useContext(StatusContext);
+  const [sidebarModulesAdmin, setSidebarModulesAdmin] = useState(
+    cloneDefaultModules(),
+  );
 
-  // 左侧边栏模块管理状态（管理员全局控制）
-  const [sidebarModulesAdmin, setSidebarModulesAdmin] = useState({
-    chat: {
-      enabled: true,
-      playground: true,
-      chat: true,
-    },
-    console: {
-      enabled: true,
-      detail: true,
-      token: true,
-      log: true,
-      midjourney: true,
-      task: true,
-    },
-    personal: {
-      enabled: true,
-      topup: true,
-      personal: true,
-    },
-    admin: {
-      enabled: true,
-      channel: true,
-      models: true,
-      deployment: true,
-      redemption: true,
-      user: true,
-      subscription: true,
-      setting: true,
-    },
-  });
-
-  // 处理区域级别开关变更
   function handleSectionChange(sectionKey) {
     return (checked) => {
-      const newModules = {
-        ...sidebarModulesAdmin,
+      setSidebarModulesAdmin((prev) => ({
+        ...prev,
         [sectionKey]: {
-          ...sidebarModulesAdmin[sectionKey],
+          ...prev[sectionKey],
           enabled: checked,
         },
-      };
-      setSidebarModulesAdmin(newModules);
+      }));
     };
   }
 
-  // 处理功能级别开关变更
   function handleModuleChange(sectionKey, moduleKey) {
     return (checked) => {
-      const newModules = {
-        ...sidebarModulesAdmin,
+      setSidebarModulesAdmin((prev) => ({
+        ...prev,
         [sectionKey]: {
-          ...sidebarModulesAdmin[sectionKey],
+          ...prev[sectionKey],
           [moduleKey]: checked,
         },
-      };
-      setSidebarModulesAdmin(newModules);
+      }));
     };
   }
 
-  // 重置为默认配置
   function resetSidebarModules() {
-    const defaultModules = {
-      chat: {
-        enabled: true,
-        playground: true,
-        chat: true,
-      },
-      console: {
-        enabled: true,
-        detail: true,
-        token: true,
-        log: true,
-        midjourney: true,
-        task: true,
-      },
-      personal: {
-        enabled: true,
-        topup: true,
-        personal: true,
-      },
-      admin: {
-        enabled: true,
-        channel: true,
-        models: true,
-        deployment: true,
-        redemption: true,
-        user: true,
-        subscription: true,
-        setting: true,
-      },
-    };
-    setSidebarModulesAdmin(defaultModules);
+    setSidebarModulesAdmin(cloneDefaultModules());
     showSuccess(t('已重置为默认配置'));
   }
 
-  // 保存配置
   async function onSubmit() {
     setLoading(true);
     try {
+      const serialized = JSON.stringify(sidebarModulesAdmin);
       const res = await API.put('/api/option/', {
         key: 'SidebarModulesAdmin',
-        value: JSON.stringify(sidebarModulesAdmin),
+        value: serialized,
       });
       const { success, message } = res.data;
-      if (success) {
-        showSuccess(t('保存成功'));
-
-        // 立即更新StatusContext中的状态
-        statusDispatch({
-          type: 'set',
-          payload: {
-            ...statusState.status,
-            SidebarModulesAdmin: JSON.stringify(sidebarModulesAdmin),
-          },
-        });
-
-        // 刷新父组件状态
-        if (props.refresh) {
-          await props.refresh();
-        }
-      } else {
+      if (!success) {
         showError(message);
+        return;
+      }
+
+      showSuccess(t('保存成功'));
+      statusDispatch({
+        type: 'set',
+        payload: {
+          ...statusState.status,
+          SidebarModulesAdmin: serialized,
+        },
+      });
+
+      if (props.refresh) {
+        await props.refresh();
       }
     } catch (error) {
       showError(t('保存失败，请重试'));
@@ -170,41 +159,20 @@ export default function SettingsSidebarModulesAdmin(props) {
   }
 
   useEffect(() => {
-    // 从 props.options 中获取配置
-    if (props.options && props.options.SidebarModulesAdmin) {
-      try {
-        const modules = JSON.parse(props.options.SidebarModulesAdmin);
-        setSidebarModulesAdmin(modules);
-      } catch (error) {
-        // 使用默认配置
-        const defaultModules = {
-          chat: { enabled: true, playground: true, chat: true },
-          console: {
-            enabled: true,
-            detail: true,
-            token: true,
-            log: true,
-            midjourney: true,
-            task: true,
-          },
-          personal: { enabled: true, topup: true, personal: true },
-          admin: {
-            enabled: true,
-            channel: true,
-            models: true,
-            deployment: true,
-            redemption: true,
-            user: true,
-            subscription: true,
-            setting: true,
-          },
-        };
-        setSidebarModulesAdmin(defaultModules);
-      }
+    if (!props.options?.SidebarModulesAdmin) {
+      setSidebarModulesAdmin(cloneDefaultModules());
+      return;
+    }
+
+    try {
+      setSidebarModulesAdmin(
+        mergeModules(JSON.parse(props.options.SidebarModulesAdmin)),
+      );
+    } catch (error) {
+      setSidebarModulesAdmin(cloneDefaultModules());
     }
   }, [props.options]);
 
-  // 区域配置数据
   const sectionConfigs = [
     {
       key: 'chat',
@@ -222,10 +190,29 @@ export default function SettingsSidebarModulesAdmin(props) {
     {
       key: 'console',
       title: t('控制台区域'),
-      description: t('数据管理和日志查看'),
+      description: t('数据看板和日志查看'),
       modules: [
         { key: 'detail', title: t('数据看板'), description: t('系统数据统计') },
-        { key: 'token', title: t('令牌管理'), description: t('API令牌管理') },
+        {
+          key: 'model-dashboard',
+          title: t('模型看板'),
+          description: t('模型运行指标'),
+        },
+        {
+          key: 'rate-limit',
+          title: t('限流看板'),
+          description: t('限流运行指标'),
+        },
+        {
+          key: 'performance-dashboard',
+          title: t('性能看板'),
+          description: t('API性能指标'),
+        },
+        {
+          key: 'mysql-dashboard',
+          title: t('DB 看板'),
+          description: t('数据库运行指标'),
+        },
         { key: 'log', title: t('使用日志'), description: t('API使用记录') },
         {
           key: 'midjourney',
@@ -251,9 +238,27 @@ export default function SettingsSidebarModulesAdmin(props) {
     {
       key: 'admin',
       title: t('管理员区域'),
-      description: t('系统管理功能'),
+      description: t('渠道、分组、令牌、限流和系统管理功能'),
       modules: [
         { key: 'channel', title: t('渠道管理'), description: t('API渠道配置') },
+        {
+          key: 'group-management',
+          configSection: 'console',
+          title: t('分组管理'),
+          description: t('分组与渠道映射管理'),
+        },
+        {
+          key: 'token',
+          configSection: 'console',
+          title: t('令牌管理'),
+          description: t('API令牌管理'),
+        },
+        {
+          key: 'rate-limit-management',
+          configSection: 'console',
+          title: t('限流管理'),
+          description: t('模型分类与限流策略管理'),
+        },
         { key: 'models', title: t('模型管理'), description: t('AI模型配置') },
         {
           key: 'deployment',
@@ -290,7 +295,6 @@ export default function SettingsSidebarModulesAdmin(props) {
       >
         {sectionConfigs.map((section) => (
           <div key={section.key} style={{ marginBottom: '32px' }}>
-            {/* 区域标题和总开关 */}
             <div
               style={{
                 display: 'flex',
@@ -333,66 +337,78 @@ export default function SettingsSidebarModulesAdmin(props) {
               />
             </div>
 
-            {/* 功能模块网格 */}
             <Row gutter={[16, 16]}>
-              {section.modules.map((module) => (
-                <Col key={module.key} xs={24} sm={12} md={8} lg={6} xl={6}>
-                  <Card
-                    bodyStyle={{ padding: '16px' }}
-                    hoverable
-                    style={{
-                      opacity: sidebarModulesAdmin[section.key]?.enabled
-                        ? 1
-                        : 0.5,
-                      transition: 'opacity 0.2s',
-                    }}
+              {section.modules.map((module) => {
+                const configSection = module.configSection || section.key;
+                return (
+                  <Col
+                    key={`${section.key}-${module.key}`}
+                    xs={24}
+                    sm={12}
+                    md={8}
+                    lg={6}
+                    xl={6}
                   >
-                    <div
+                    <Card
+                      bodyStyle={{ padding: '16px' }}
+                      hoverable
                       style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        height: '100%',
+                        opacity: sidebarModulesAdmin[section.key]?.enabled
+                          ? 1
+                          : 0.5,
+                        transition: 'opacity 0.2s',
                       }}
                     >
-                      <div style={{ flex: 1, textAlign: 'left' }}>
-                        <div
-                          style={{
-                            fontWeight: '600',
-                            fontSize: '14px',
-                            color: 'var(--semi-color-text-0)',
-                            marginBottom: '4px',
-                          }}
-                        >
-                          {module.title}
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          height: '100%',
+                        }}
+                      >
+                        <div style={{ flex: 1, textAlign: 'left' }}>
+                          <div
+                            style={{
+                              fontWeight: '600',
+                              fontSize: '14px',
+                              color: 'var(--semi-color-text-0)',
+                              marginBottom: '4px',
+                            }}
+                          >
+                            {module.title}
+                          </div>
+                          <Text
+                            type='secondary'
+                            size='small'
+                            style={{
+                              fontSize: '12px',
+                              color: 'var(--semi-color-text-2)',
+                              lineHeight: '1.4',
+                              display: 'block',
+                            }}
+                          >
+                            {module.description}
+                          </Text>
                         </div>
-                        <Text
-                          type='secondary'
-                          size='small'
-                          style={{
-                            fontSize: '12px',
-                            color: 'var(--semi-color-text-2)',
-                            lineHeight: '1.4',
-                            display: 'block',
-                          }}
-                        >
-                          {module.description}
-                        </Text>
+                        <div style={{ marginLeft: '16px' }}>
+                          <Switch
+                            checked={
+                              sidebarModulesAdmin[configSection]?.[module.key]
+                            }
+                            onChange={handleModuleChange(
+                              configSection,
+                              module.key,
+                            )}
+                            size='default'
+                            disabled={!sidebarModulesAdmin[section.key]?.enabled}
+                          />
+                        </div>
                       </div>
-                      <div style={{ marginLeft: '16px' }}>
-                        <Switch
-                          checked={
-                            sidebarModulesAdmin[section.key]?.[module.key]
-                          }
-                          onChange={handleModuleChange(section.key, module.key)}
-                          size='default'
-                          disabled={!sidebarModulesAdmin[section.key]?.enabled}
-                        />
-                      </div>
-                    </div>
-                  </Card>
-                </Col>
-              ))}
+                    </Card>
+                  </Col>
+                );
+              })}
             </Row>
           </div>
         ))}
@@ -411,10 +427,7 @@ export default function SettingsSidebarModulesAdmin(props) {
             size='default'
             type='tertiary'
             onClick={resetSidebarModules}
-            style={{
-              borderRadius: '6px',
-              fontWeight: '500',
-            }}
+            style={{ borderRadius: '6px', fontWeight: '500' }}
           >
             {t('重置为默认')}
           </Button>
