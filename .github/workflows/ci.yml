@@ -81,3 +81,92 @@ jobs:
         env:
           VITE_REACT_APP_VERSION: ci
         run: bun run build
+
+  release-2-0:
+    name: Release / 2.0 package & tag
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.head_commit.message == 'release: 2.0'
+    needs:
+      - backend
+      - frontend-classic
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install classic dependencies
+        working-directory: web
+        run: bun install --filter ./classic
+
+      - name: Build production classic frontend
+        working-directory: web/classic
+        env:
+          VITE_REACT_APP_VERSION: '2.0'
+        run: bun run build
+
+      - name: Build Linux amd64 release package
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(cat VERSION | tr -d '\r\n')"
+          test "$version" = "2.0"
+
+          package_dir="release/new-api-2.0-linux-amd64"
+          mkdir -p "$package_dir"
+
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -trimpath \
+              -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=${version}'" \
+              -o "$package_dir/new-api" .
+
+          cp VERSION LICENSE NOTICE THIRD-PARTY-LICENSES.md "$package_dir/"
+          tar -czf release/new-api-2.0-linux-amd64.tar.gz \
+            -C release new-api-2.0-linux-amd64
+          sha256sum release/new-api-2.0-linux-amd64.tar.gz \
+            > release/new-api-2.0-linux-amd64.tar.gz.sha256
+
+      - name: Upload compiled release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: new-api-2.0-linux-amd64
+          path: |
+            release/new-api-2.0-linux-amd64.tar.gz
+            release/new-api-2.0-linux-amd64.tar.gz.sha256
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Create tag 2.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --tags --force
+
+          if git rev-parse -q --verify refs/tags/2.0 >/dev/null; then
+            tagged_sha="$(git rev-list -n 1 2.0)"
+            if [ "$tagged_sha" != "$GITHUB_SHA" ]; then
+              echo "tag 2.0 already exists at $tagged_sha, expected $GITHUB_SHA" >&2
+              exit 1
+            fi
+            echo "tag 2.0 already points to this release commit"
+          else
+            git tag -a 2.0 -m "new-api 2.0"
+            git push origin refs/tags/2.0
+          fi
