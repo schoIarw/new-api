@@ -20,7 +20,7 @@ import {
   Tag,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Layers3 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Layers3 } from 'lucide-react';
 import GroupRatioSettings from '../Setting/Ratio/GroupRatioSettings';
 import { API, showError, showSuccess, toBoolean } from '../../helpers';
 
@@ -36,6 +36,7 @@ const GroupManagement = () => {
   const [editChannel, setEditChannel] = useState(null);
   const [editGroups, setEditGroups] = useState([]);
   const [savingMapping, setSavingMapping] = useState(false);
+  const [showOtherSettings, setShowOtherSettings] = useState(false);
 
   const loadOptions = async () => {
     const res = await API.get('/api/option/');
@@ -45,7 +46,10 @@ const GroupManagement = () => {
     const next = {};
     (res.data.data || []).forEach((item) => {
       let value = item.value;
-      if (typeof value === 'string' && (value.startsWith('{') || value.startsWith('['))) {
+      if (
+        typeof value === 'string' &&
+        (value.startsWith('{') || value.startsWith('['))
+      ) {
         try {
           value = JSON.stringify(JSON.parse(value), null, 2);
         } catch (_) {
@@ -114,8 +118,6 @@ const GroupManagement = () => {
     setLoading(true);
     try {
       await loadOptions();
-      // When GUI-managed rate limiting has been enabled, adding/removing a
-      // group must immediately regenerate the compatible runtime JSON.
       const rebuild = await API.post('/api/rate-limit-management/rebuild');
       if (!rebuild.data.success) {
         throw new Error(rebuild.data.message || '自动更新限流配置失败');
@@ -166,10 +168,12 @@ const GroupManagement = () => {
     {
       title: '渠道',
       dataIndex: 'name',
-      render: (name, record) => (
+      render: (name) => (
         <div>
           <div className='font-medium'>{name || '-'}</div>
-          <Text type='tertiary' size='small'>渠道配置请在“渠道管理”中维护</Text>
+          <Text type='tertiary' size='small'>
+            渠道配置请在“渠道管理”中维护
+          </Text>
         </div>
       ),
     },
@@ -183,11 +187,18 @@ const GroupManagement = () => {
           .filter(Boolean);
         return (
           <Space wrap>
-            {groups.length ? groups.map((group) => (
-              <Tag key={group} color={groupNames.includes(group) ? 'blue' : 'orange'}>
-                {group}
-              </Tag>
-            )) : <Text type='tertiary'>未配置</Text>}
+            {groups.length ? (
+              groups.map((group) => (
+                <Tag
+                  key={group}
+                  color={groupNames.includes(group) ? 'blue' : 'orange'}
+                >
+                  {group}
+                </Tag>
+              ))
+            ) : (
+              <Text type='tertiary'>未配置</Text>
+            )}
           </Space>
         );
       },
@@ -205,6 +216,12 @@ const GroupManagement = () => {
 
   return (
     <div className='mt-[60px] px-2'>
+      <style>{`
+        .group-management-basic-only .semi-form-section ~ .semi-form-section {
+          display: none;
+        }
+      `}</style>
+
       <Spin spinning={loading} size='large'>
         <Card
           className='!rounded-2xl'
@@ -215,7 +232,42 @@ const GroupManagement = () => {
             </div>
           }
         >
-          <GroupRatioSettings options={options} refresh={refreshGroupSettings} />
+          <div
+            className={
+              showOtherSettings ? '' : 'group-management-basic-only'
+            }
+          >
+            <GroupRatioSettings
+              options={options}
+              refresh={refreshGroupSettings}
+            />
+          </div>
+
+          <div
+            className='mt-3 pt-3 flex items-center justify-between'
+            style={{ borderTop: '1px solid var(--semi-color-border)' }}
+          >
+            <div>
+              <div className='font-medium'>其他设置</div>
+              <Text type='tertiary' size='small'>
+                自动分组、分组特殊倍率和分组特殊可用分组默认隐藏，需要时展开设置
+              </Text>
+            </div>
+            <Button
+              theme='light'
+              type='tertiary'
+              icon={
+                showOtherSettings ? (
+                  <ChevronUp size={16} />
+                ) : (
+                  <ChevronDown size={16} />
+                )
+              }
+              onClick={() => setShowOtherSettings((prev) => !prev)}
+            >
+              {showOtherSettings ? '收起其他设置' : '展开其他设置'}
+            </Button>
+          </div>
         </Card>
 
         <Card
@@ -260,7 +312,9 @@ const GroupManagement = () => {
         closeOnEsc={!savingMapping}
       >
         <div className='mb-2'>
-          <Text type='tertiary'>渠道只能在“渠道管理”页面创建、删除和修改；此处只维护分组映射。</Text>
+          <Text type='tertiary'>
+            渠道只能在“渠道管理”页面创建、删除和修改；此处只维护分组映射。
+          </Text>
         </div>
         <Select
           multiple
