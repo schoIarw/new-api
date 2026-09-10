@@ -203,77 +203,11 @@ func buildRateLimitItems(stats []model.RateLimitGroupStat) []RateLimitDashboardI
 	return items
 }
 
-// GetRateLimitDashboard 限流看板接口
-// 实时模式：periods=N（查询最近 N 个周期，N>=1），自动刷新
-// 历史模式：start_timestamp + end_timestamp（按时间段查询，按限流周期统计呈现）
+// GetRateLimitDashboard 限流看板接口。
+// 实时模式：periods=N，查询最近 N 个限流周期。
+// 历史模式：start_timestamp + periods=N，从指定时间开始连续查询 N 个限流周期。
 func GetRateLimitDashboard(c *gin.Context) {
-	durationSec := int64(setting.ModelRequestRateLimitDurationMinutes * 60)
-	now := time.Now().Unix()
-
-	startTS, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
-	endTS, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
-
-	var periodStats []RateLimitPeriodData
-
-	if startTS > 0 && endTS > 0 {
-		// 历史模式：最多48小时
-		if endTS-startTS > 48*3600 {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "历史查询时间范围不能超过48小时",
-			})
-			return
-		}
-		// 历史模式：按时间段切分为限流周期
-		periodStart := (startTS / durationSec) * durationSec
-		idx := int64(0)
-		for periodStart < endTS {
-			periodEnd := periodStart + durationSec
-			stats, err := model.GetRateLimitGroupStats(periodStart, periodEnd)
-			if err != nil {
-				common.ApiError(c, err)
-				return
-			}
-			periodStats = append(periodStats, RateLimitPeriodData{
-				PeriodIndex:    idx,
-				StartTimestamp: periodStart,
-				EndTimestamp:   periodEnd,
-				Items:          buildRateLimitItems(stats),
-			})
-			periodStart += durationSec
-			idx++
-		}
-	} else {
-		// 实时模式：查询最近 N 个周期
-		periods, _ := strconv.Atoi(c.Query("periods"))
-		if periods < 1 {
-			periods = 1
-		}
-		for p := 0; p < periods; p++ {
-			endTimestamp := now - int64(p)*durationSec
-			startTimestamp := endTimestamp - durationSec
-			stats, err := model.GetRateLimitGroupStats(startTimestamp, endTimestamp)
-			if err != nil {
-				common.ApiError(c, err)
-				return
-			}
-			periodStats = append(periodStats, RateLimitPeriodData{
-				PeriodIndex:    int64(p),
-				StartTimestamp: startTimestamp,
-				EndTimestamp:   endTimestamp,
-				Items:          buildRateLimitItems(stats),
-			})
-		}
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-		"data": gin.H{
-			"duration_minutes": setting.ModelRequestRateLimitDurationMinutes,
-			"periods":          periodStats,
-		},
-	})
+	GetRateLimitDashboardV2(c)
 }
 
 func GetPerformanceDashboard(c *gin.Context) {
