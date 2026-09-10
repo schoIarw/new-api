@@ -35,6 +35,8 @@ const routerMap = {
   home: '/',
   channel: '/console/channel',
   token: '/console/token',
+  'group-management': '/console/group-management',
+  'rate-limit-management': '/console/rate-limit-management',
   redemption: '/console/redemption',
   topup: '/console/topup',
   user: '/console/user',
@@ -123,9 +125,23 @@ const SiderBar = ({ onNavigate = () => {} }) => {
           isAdmin() && mysqlDashboardEnabled ? '' : 'tableHiddle',
       },
       {
+        text: t('分组管理'),
+        itemKey: 'group-management',
+        iconKey: 'models',
+        to: '/group-management',
+        className: isRoot() ? '' : 'tableHiddle',
+      },
+      {
         text: t('令牌管理'),
         itemKey: 'token',
         to: '/token',
+      },
+      {
+        text: t('限流管理'),
+        itemKey: 'rate-limit-management',
+        iconKey: 'rate-limit',
+        to: '/rate-limit-management',
+        className: isRoot() ? '' : 'tableHiddle',
       },
       {
         text: t('使用日志'),
@@ -162,6 +178,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     localStorage.getItem('enable_task'),
     t,
     isModuleVisible,
+    isRoot(),
     modelDashboardEnabled,
     rateLimitDashboardEnabled,
     performanceDashboardEnabled,
@@ -366,7 +383,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         }
         icon={
           <div className='sidebar-icon-container flex-shrink-0'>
-            {getLucideIcon(item.itemKey, isSelected)}
+            {getLucideIcon(item.iconKey || item.itemKey, isSelected)}
           </div>
         }
         className={item.className}
@@ -393,7 +410,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
           }
           icon={
             <div className='sidebar-icon-container flex-shrink-0'>
-              {getLucideIcon(item.itemKey, isSelected)}
+              {getLucideIcon(item.iconKey || item.itemKey, isSelected)}
             </div>
           }
         >
