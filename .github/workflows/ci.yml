@@ -28,7 +28,7 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend / Go test & build
+    name: Backend / Go build & test
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -50,11 +50,11 @@ jobs:
       - name: Download Go modules
         run: go mod download
 
-      - name: Run Go tests
-        run: go test ./... -count=1
-
       - name: Compile backend
         run: go build ./...
+
+      - name: Run Go tests
+        run: go test ./... -count=1
 
   frontend-classic:
     name: Frontend / Classic build
