@@ -31,19 +31,19 @@ type ManagedModelCategoryItem struct {
 }
 
 type ManagedRateLimitSnapshot struct {
-	ManagedEnabled bool                   `json:"managed_enabled"`
-	Groups         []string               `json:"groups"`
+	ManagedEnabled bool                       `json:"managed_enabled"`
+	Groups         []string                   `json:"groups"`
 	Models         []ManagedModelCategoryItem `json:"models"`
-	CategoryLimits ManagedCategoryPolicies `json:"category_limits"`
-	SpecialLimits  ManagedSpecialPolicies  `json:"special_limits"`
-	GeneratedJSON  string                 `json:"generated_json"`
+	CategoryLimits ManagedCategoryPolicies    `json:"category_limits"`
+	SpecialLimits  ManagedSpecialPolicies     `json:"special_limits"`
+	GeneratedJSON  string                     `json:"generated_json"`
 }
 
 func getOptionString(key string) string {
 	common.OptionMapRWMutex.RLock()
 	defer common.OptionMapRWMutex.RUnlock()
 	if value, ok := common.OptionMap[key]; ok {
-		return common.Interface2String(value)
+		return value
 	}
 	return ""
 }
@@ -240,6 +240,14 @@ func RebuildManagedModelRateLimits() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	classifiableModels, err := model.ListClassifiableModelNames()
+	if err != nil {
+		return "", err
+	}
+	activeModelSet := make(map[string]struct{}, len(classifiableModels))
+	for _, modelName := range classifiableModels {
+		activeModelSet[modelName] = struct{}{}
+	}
 
 	generated := make(map[string]setting.ModelRequestRateLimitEntry)
 
@@ -264,8 +272,12 @@ func RebuildManagedModelRateLimits() (string, error) {
 			"all": {0, 0},
 		}
 
-		// Category policy supplies the common baseline for every group.
+		// Category policy supplies the common baseline for every group. Ignore
+		// stale category rows for model names that no longer exist or route.
 		for modelName, category := range categoryMap {
+			if _, active := activeModelSet[modelName]; !active {
+				continue
+			}
 			pair, ok := categoryLimits[category]
 			if !ok || (pair[0] == 0 && pair[1] == 0) {
 				continue
@@ -277,6 +289,9 @@ func RebuildManagedModelRateLimits() (string, error) {
 		// it can explicitly disable a general category baseline for one group.
 		if overrides, ok := specialLimits[group]; ok {
 			for modelName, pair := range overrides {
+				if _, active := activeModelSet[modelName]; !active {
+					continue
+				}
 				modelRules[modelName] = [2]int{pair[0], pair[1]}
 			}
 		}
