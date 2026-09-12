@@ -34,11 +34,46 @@ import EditChannelModal from './modals/EditChannelModal';
 import EditTagModal from './modals/EditTagModal';
 import MultiKeyManageModal from './modals/MultiKeyManageModal';
 import ChannelUpstreamUpdateModal from './modals/ChannelUpstreamUpdateModal';
+import { API, showError, showSuccess } from '../../../helpers';
 import { createCardProPagination } from '../../../helpers/utils';
 
 const ChannelsPage = () => {
-  const channelsData = useChannelsData();
+  const baseChannelsData = useChannelsData();
   const isMobile = useIsMobile();
+
+  // Channel status has a dedicated backend endpoint and permission boundary.
+  // Keep legacy generic updates (priority/weight/etc.) in useChannelsData, but
+  // route enable/disable through /api/channel/:id/status and reload the list so
+  // filters, tag aggregates and server-side channel cache state stay in sync.
+  const manageChannel = async (id, action, record, value) => {
+    if (action !== 'enable' && action !== 'disable') {
+      return baseChannelsData.manageChannel(id, action, record, value);
+    }
+
+    const status = action === 'enable' ? 1 : 2;
+    try {
+      const res = await API.post(`/api/channel/${id}/status`, { status });
+      const { success, message } = res?.data || {};
+      if (!success) {
+        showError(message || baseChannelsData.t('操作失败'));
+        return;
+      }
+
+      showSuccess(baseChannelsData.t('操作成功完成！'));
+      await baseChannelsData.refresh();
+    } catch (error) {
+      showError(
+        error?.response?.data?.message ||
+          error?.message ||
+          baseChannelsData.t('操作失败'),
+      );
+    }
+  };
+
+  const channelsData = {
+    ...baseChannelsData,
+    manageChannel,
+  };
 
   return (
     <>
