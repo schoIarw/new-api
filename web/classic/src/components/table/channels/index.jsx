@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { Banner } from '@douyinfe/semi-ui';
 import { IconAlertTriangle } from '@douyinfe/semi-icons';
 import CardPro from '../../common/ui/CardPro';
@@ -35,16 +35,23 @@ import EditTagModal from './modals/EditTagModal';
 import MultiKeyManageModal from './modals/MultiKeyManageModal';
 import ChannelUpstreamUpdateModal from './modals/ChannelUpstreamUpdateModal';
 import { API, showError, showSuccess } from '../../../helpers';
+import {
+  getApiAvailability,
+  subscribeApiAvailability,
+} from '../../../helpers/apiFailure';
 import { createCardProPagination } from '../../../helpers/utils';
 
 const ChannelsPage = () => {
   const baseChannelsData = useChannelsData();
   const isMobile = useIsMobile();
+  const availability = useSyncExternalStore(
+    subscribeApiAvailability,
+    getApiAvailability,
+    getApiAvailability,
+  );
 
-  // Channel status has a dedicated backend endpoint and permission boundary.
-  // Keep legacy generic updates (priority/weight/etc.) in useChannelsData, but
-  // route enable/disable through /api/channel/:id/status and reload the list so
-  // filters, tag aggregates and server-side channel cache state stay in sync.
+  // The backend has a dedicated status endpoint. Other channel operations
+  // retain their existing API and permissions.
   const manageChannel = async (id, action, record, value) => {
     if (action !== 'enable' && action !== 'disable') {
       return baseChannelsData.manageChannel(id, action, record, value);
@@ -62,16 +69,17 @@ const ChannelsPage = () => {
       showSuccess(baseChannelsData.t('操作成功完成！'));
       await baseChannelsData.refresh();
     } catch (error) {
-      showError(
-        error?.response?.data?.message ||
-          error?.message ||
-          baseChannelsData.t('操作失败'),
-      );
+      // Pass the Axios error object through shared deduplication. Passing
+      // error.message as a string would create another Network Error toast.
+      showError(error);
     }
   };
 
   const channelsData = {
     ...baseChannelsData,
+    // Existing data stays visible, but a failed initial fetch must not leave
+    // the entire table spinning indefinitely during an infrastructure outage.
+    loading: availability.status === 'online' ? baseChannelsData.loading : false,
     manageChannel,
   };
 
