@@ -76,6 +76,10 @@ jobs:
       - name: Install classic dependencies
         run: bun install --filter ./classic
 
+      - name: Test frontend failure classification
+        working-directory: web/classic
+        run: bun test src/helpers/apiFailurePolicy.test.js
+
       - name: Build classic frontend
         working-directory: web/classic
         env:
