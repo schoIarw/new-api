@@ -6,7 +6,7 @@ import {
   subscribeApiAvailability,
 } from '../../helpers/apiFailure';
 
-// Render once in the shared page layout, not once per failed request/page.
+// Render once in the shared layout rather than for every failed request.
 export default function ApiAvailabilityBanner() {
   const availability = useSyncExternalStore(
     subscribeApiAvailability,
@@ -16,6 +16,7 @@ export default function ApiAvailabilityBanner() {
   if (availability.status === 'online') return null;
 
   const checking = availability.status === 'recovering';
+  const recovered = availability.status === 'recovered';
   return (
     <div
       role='status'
@@ -36,15 +37,31 @@ export default function ApiAvailabilityBanner() {
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ flex: 1 }}>
-          <strong>{checking ? '正在检查服务恢复情况' : availability.reason || '服务暂时不可用'}</strong>
+          <strong>
+            {checking
+              ? '正在检查服务恢复情况'
+              : recovered
+                ? '服务连接已恢复'
+                : availability.reason || '服务暂时不可用'}
+          </strong>
           <div style={{ fontSize: 12, marginTop: 4 }}>
             {checking
               ? '正在检查数据库及服务连接，请稍候。'
-              : '部分数据可能不是最新数据。系统将自动重试，恢复前请勿重复提交操作。'}
+              : recovered
+                ? '请在保存未提交的编辑内容后刷新页面，以重新加载最新数据。'
+                : '部分数据可能不是最新数据。系统将自动重试，恢复前请勿重复提交操作。'}
           </div>
         </div>
-        <Button size='small' loading={checking} disabled={checking} onClick={() => void retryApiAvailability()}>
-          重试
+        <Button
+          size='small'
+          loading={checking}
+          disabled={checking}
+          onClick={() => {
+            if (recovered) window.location.reload();
+            else void retryApiAvailability();
+          }}
+        >
+          {recovered ? '刷新页面' : '重试'}
         </Button>
       </div>
     </div>
