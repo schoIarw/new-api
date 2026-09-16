@@ -54,18 +54,23 @@ export async function retryApiAvailability() {
   const timeout = setTimeout(() => controller.abort(), 5000);
   try {
     const configured = import.meta.env.VITE_REACT_APP_SERVER_URL;
-    const url = new URL('/health/ready', configured || window.location.origin);
+    const base = new URL(configured || '/', window.location.origin);
+    const url = new URL('/health/ready', base);
     const response = await fetch(url.toString(), {
       method: 'GET',
       cache: 'no-store',
       credentials: 'include',
       signal: controller.signal,
     });
-    if (!response.ok) throw new Error('Backend is not ready');
+    // Nginx SPA fallbacks can return index.html with HTTP 200; do not treat
+    // that as a healthy backend or a recovered database.
+    const readiness = response.ok ? await response.json() : null;
+    if (!response.ok || readiness?.status !== 'ready') {
+      throw new Error('Backend is not ready');
+    }
     retryAttempt = 0;
     serverFailureCount = 0;
     // Do not silently discard unsaved forms by reloading automatically.
-    // Let the operator decide when to refresh existing page data.
     setAvailability('recovered', '服务连接已恢复');
   } catch (_error) {
     setAvailability('unavailable', snapshot.reason);
@@ -79,7 +84,7 @@ export async function retryApiAvailability() {
 export function reportApiFailure(error) {
   const kind = classifyApiError(error);
   if (!kind || error?.config?.skipAvailabilityTracking) return false;
-  // The global interceptor and individual page catches may see the same error.
+  // The interceptor and individual page catches may see the same error.
   if (processedErrors.has(error)) return true;
   processedErrors.add(error);
   if (kind === 'server') {
@@ -106,9 +111,14 @@ export function reportApiFailure(error) {
   return true;
 }
 
-// Exported explicitly by helpers/index.js. Page-level catches sharing the
-// Axios error cannot generate duplicate outage toasts.
+// Also suppress page-level stringification of the same Axios failure, e.g.
+// catch (error) { showError(error.message) }. Keep business errors visible.
+const NETWORK_MESSAGE = /Network Error|Failed to fetch|ERR_CONNECTION_(?:REFUSED|RESET|CLOSED)|网络错误|连接服务器失败/i;
 export function showError(error) {
   if (reportApiFailure(error)) return;
+  if (snapshot.status !== 'online') {
+    const message = typeof error === 'string' ? error : error?.message;
+    if (typeof message === 'string' && NETWORK_MESSAGE.test(message)) return;
+  }
   legacyShowError(error);
 }
