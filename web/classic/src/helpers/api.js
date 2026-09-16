@@ -19,23 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 
 import {
   getUserIdFromLocalStorage,
-  showError,
   formatMessageForAPI,
   isValidMessage,
 } from './utils';
+import { showError, reportApiFailure } from './apiFailure';
 import axios from 'axios';
 import { MESSAGE_ROLES } from '../constants/playground.constants';
-
-export let API = axios.create({
-  baseURL: import.meta.env.VITE_REACT_APP_SERVER_URL
-    ? import.meta.env.VITE_REACT_APP_SERVER_URL
-    : '',
-  headers: {
-    'New-API-User': getUserIdFromLocalStorage(),
-    'Cache-Control': 'no-store',
-  },
-});
-
 
 function redirectToOAuthUrl(url, options = {}) {
   const { openInNewTab = false } = options;
@@ -48,7 +37,6 @@ function redirectToOAuthUrl(url, options = {}) {
 
   window.location.assign(targetUrl);
 }
-
 
 function patchAPIInstance(instance) {
   const originalGet = instance.get.bind(instance);
@@ -78,10 +66,10 @@ function patchAPIInstance(instance) {
   };
 }
 
-patchAPIInstance(API);
-
-export function updateAPI() {
-  API = axios.create({
+// Always register the interceptor on the *new* instance. updateAPI() is called
+// after login/logout; previously it silently dropped global error handling.
+function createAPIInstance() {
+  const instance = axios.create({
     baseURL: import.meta.env.VITE_REACT_APP_SERVER_URL
       ? import.meta.env.VITE_REACT_APP_SERVER_URL
       : '',
@@ -90,21 +78,28 @@ export function updateAPI() {
       'Cache-Control': 'no-store',
     },
   });
-
-  patchAPIInstance(API);
+  patchAPIInstance(instance);
+  instance.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      if (!error.config?.skipErrorHandler) {
+        showError(error);
+      } else {
+        // Silent callers still contribute to availability, unless they are
+        // explicitly health probes or intentionally canceled requests.
+        reportApiFailure(error);
+      }
+      return Promise.reject(error);
+    },
+  );
+  return instance;
 }
 
-API.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    // 如果请求配置中显式要求跳过全局错误处理，则不弹出默认错误提示
-    if (error.config && error.config.skipErrorHandler) {
-      return Promise.reject(error);
-    }
-    showError(error);
-    return Promise.reject(error);
-  },
-);
+export let API = createAPIInstance();
+
+export function updateAPI() {
+  API = createAPIInstance();
+}
 
 // playground
 
@@ -120,7 +115,6 @@ export const buildApiPayload = (
     .map(formatMessageForAPI)
     .filter(Boolean);
 
-  // 如果有系统提示，插入到消息开头
   if (systemPrompt && systemPrompt.trim()) {
     processedMessages.unshift({
       role: MESSAGE_ROLES.SYSTEM,
@@ -135,7 +129,6 @@ export const buildApiPayload = (
     stream: inputs.stream,
   };
 
-  // 添加启用的参数
   const parameterMappings = {
     temperature: 'temperature',
     top_p: 'top_p',
@@ -150,20 +143,13 @@ export const buildApiPayload = (
     const value = inputs[param];
     const hasValue = value !== undefined && value !== null;
 
-    if (!enabled) {
-      return;
-    }
+    if (!enabled) return;
 
     if (param === 'max_tokens') {
-      if (typeof value === 'number') {
-        payload[param] = value;
-      }
+      if (typeof value === 'number') payload[param] = value;
       return;
     }
-
-    if (hasValue) {
-      payload[param] = value;
-    }
+    if (hasValue) payload[param] = value;
   });
 
   return payload;
@@ -275,7 +261,7 @@ export async function onDiscordOAuthClicked(client_id, options = {}) {
   const response_type = 'code';
   const scope = 'identify+openid';
   redirectToOAuthUrl(
-    `https://discord.com/oauth2/authorize?client_id=${client_id}&redirect_uri=${redirect_uri}&response_type=${response_type}&scope=${scope}&state=${state}`,
+    `https://discord.com/api/oauth2/authorize?client_id=${client_id}&redirect_uri=${redirect_uri}&response_type=${response_type}&scope=${scope}&state=${state}`,
   );
 }
 
@@ -304,26 +290,22 @@ export async function onGitHubOAuthClicked(github_client_id, options = {}) {
   );
 }
 
-export async function onLinuxDOOAuthClicked(
-  linuxdo_client_id,
-  options = { shouldLogout: false },
-) {
+export async function onLinuxDOOAuthClicked(linuxdo_client_id, options = {}) {
   const state = await prepareOAuthState(options);
   if (!state) return;
-  redirectToOAuthUrl(
-    `https://connect.linux.do/oauth2/authorize?response_type=code&client_id=${linuxdo_client_id}&state=${state}`,
-  );
+  redirect_uri = `${window.location.origin}/oauth/linuxdo`;
+  const url = `https://connect.linux.do/oauth2/authorize?response_type=code&client_id=${linuxdo_client_id}&redirect_uri=${redirect_uri}&scope=user:email&state=${state}`;
+  redirectToOAuthUrl(url, options);
 }
 
 /**
  * Initiate custom OAuth login
  * @param {Object} provider - Custom OAuth provider config from status API
- * @param {string} provider.slug - Provider slug (used for callback URL)
- * @param {string} provider.client_id - OAuth client ID
- * @param {string} provider.authorization_endpoint - Authorization URL
- * @param {string} provider.scopes - OAuth scopes (space-separated)
- * @param {Object} options - Options
- * @param {boolean} options.shouldLogout - Whether to logout first
+ * @param {string} provider.slug - Custom OAuth provider slug
+ * @param {string} provider.client_id - Custom OAuth client ID
+ * @param {string} provider.authorization_endpoint - Custom OAuth authorization endpoint
+ * @param {string} provider.scopes - Requested scopes
+ * @param {Object} options - Redirect options
  */
 export async function onCustomOAuthClicked(provider, options = {}) {
   const state = await prepareOAuthState(options);
@@ -331,8 +313,6 @@ export async function onCustomOAuthClicked(provider, options = {}) {
 
   try {
     const redirect_uri = `${window.location.origin}/oauth/${provider.slug}`;
-
-    // Check if authorization_endpoint is a full URL or relative path
     let authUrl;
     if (
       provider.authorization_endpoint.startsWith('http://') ||
@@ -340,7 +320,6 @@ export async function onCustomOAuthClicked(provider, options = {}) {
     ) {
       authUrl = new URL(provider.authorization_endpoint);
     } else {
-      // Relative path - this is a configuration error, show error message
       console.error(
         'Custom OAuth authorization_endpoint must be a full URL:',
         provider.authorization_endpoint,
@@ -354,12 +333,8 @@ export async function onCustomOAuthClicked(provider, options = {}) {
     authUrl.searchParams.set('client_id', provider.client_id);
     authUrl.searchParams.set('redirect_uri', redirect_uri);
     authUrl.searchParams.set('response_type', 'code');
-    authUrl.searchParams.set(
-      'scope',
-      provider.scopes || 'openid profile email',
-    );
+    authUrl.searchParams.set('scope', provider.scopes || 'openid profile email');
     authUrl.searchParams.set('state', state);
-
     redirectToOAuthUrl(authUrl);
   } catch (error) {
     console.error('Failed to initiate custom OAuth:', error);
@@ -371,27 +346,19 @@ let channelModels = undefined;
 export async function loadChannelModels() {
   const res = await API.get('/api/models');
   const { success, data } = res.data;
-  if (!success) {
-    return;
-  }
+  if (!success) return;
   channelModels = data;
   localStorage.setItem('channel_models', JSON.stringify(data));
 }
 
 export function getChannelModels(type) {
   if (channelModels !== undefined && type in channelModels) {
-    if (!channelModels[type]) {
-      return [];
-    }
+    if (!channelModels[type]) return [];
     return channelModels[type];
   }
   let models = localStorage.getItem('channel_models');
-  if (!models) {
-    return [];
-  }
+  if (!models) return [];
   channelModels = JSON.parse(models);
-  if (type in channelModels) {
-    return channelModels[type];
-  }
+  if (type in channelModels) return channelModels[type];
   return [];
 }
