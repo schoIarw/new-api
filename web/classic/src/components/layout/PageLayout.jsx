@@ -22,6 +22,7 @@ import { Layout } from '@douyinfe/semi-ui';
 import SiderBar from './SiderBar';
 import App from '../../App';
 import FooterBar from './Footer';
+import ApiAvailabilityBanner from './ApiAvailabilityBanner';
 import { ToastContainer } from 'react-toastify';
 import ErrorBoundary from '../common/ErrorBoundary';
 import React, { useContext, useEffect, useState } from 'react';
@@ -101,8 +102,9 @@ const PageLayout = () => {
       } else {
         showError('Unable to connect to server');
       }
-    } catch (error) {
-      showError('Failed to load status');
+    } catch (_error) {
+      // The shared interceptor and availability banner own infrastructure
+      // errors. Showing a second toast here previously amplified outages.
     }
   };
 
@@ -174,6 +176,7 @@ const PageLayout = () => {
           drawerOpen={drawerOpen}
         />
       </Header>
+      <ApiAvailabilityBanner />
       <Layout
         style={{
           overflow: isFixedLayout && !isMobile ? 'auto' : 'visible',
