@@ -66,8 +66,7 @@ function patchAPIInstance(instance) {
   };
 }
 
-// Always register the interceptor on the *new* instance. updateAPI() is called
-// after login/logout; previously it silently dropped global error handling.
+// Always register interceptors on every instance, including after login/logout.
 function createAPIInstance() {
   const instance = axios.create({
     baseURL: import.meta.env.VITE_REACT_APP_SERVER_URL
@@ -82,12 +81,10 @@ function createAPIInstance() {
   instance.interceptors.response.use(
     (response) => response,
     (error) => {
-      if (!error.config?.skipErrorHandler) {
-        showError(error);
-      } else {
-        // Silent callers still contribute to availability, unless they are
-        // explicitly health probes or intentionally canceled requests.
+      if (error.config?.skipErrorHandler) {
         reportApiFailure(error);
+      } else {
+        showError(error);
       }
       return Promise.reject(error);
     },
@@ -115,6 +112,7 @@ export const buildApiPayload = (
     .map(formatMessageForAPI)
     .filter(Boolean);
 
+  // 如果有系统提示，插入到消息开头
   if (systemPrompt && systemPrompt.trim()) {
     processedMessages.unshift({
       role: MESSAGE_ROLES.SYSTEM,
@@ -129,6 +127,7 @@ export const buildApiPayload = (
     stream: inputs.stream,
   };
 
+  // 添加启用的参数
   const parameterMappings = {
     temperature: 'temperature',
     top_p: 'top_p',
@@ -143,13 +142,20 @@ export const buildApiPayload = (
     const value = inputs[param];
     const hasValue = value !== undefined && value !== null;
 
-    if (!enabled) return;
-
-    if (param === 'max_tokens') {
-      if (typeof value === 'number') payload[param] = value;
+    if (!enabled) {
       return;
     }
-    if (hasValue) payload[param] = value;
+
+    if (param === 'max_tokens') {
+      if (typeof value === 'number') {
+        payload[param] = value;
+      }
+      return;
+    }
+
+    if (hasValue) {
+      payload[param] = value;
+    }
   });
 
   return payload;
@@ -261,7 +267,7 @@ export async function onDiscordOAuthClicked(client_id, options = {}) {
   const response_type = 'code';
   const scope = 'identify+openid';
   redirectToOAuthUrl(
-    `https://discord.com/api/oauth2/authorize?client_id=${client_id}&redirect_uri=${redirect_uri}&response_type=${response_type}&scope=${scope}&state=${state}`,
+    `https://discord.com/oauth2/authorize?client_id=${client_id}&redirect_uri=${redirect_uri}&response_type=${response_type}&scope=${scope}&state=${state}`,
   );
 }
 
@@ -293,7 +299,7 @@ export async function onGitHubOAuthClicked(github_client_id, options = {}) {
 export async function onLinuxDOOAuthClicked(linuxdo_client_id, options = {}) {
   const state = await prepareOAuthState(options);
   if (!state) return;
-  redirect_uri = `${window.location.origin}/oauth/linuxdo`;
+  const redirect_uri = `${window.location.origin}/oauth/linuxdo`;
   const url = `https://connect.linux.do/oauth2/authorize?response_type=code&client_id=${linuxdo_client_id}&redirect_uri=${redirect_uri}&scope=user:email&state=${state}`;
   redirectToOAuthUrl(url, options);
 }
