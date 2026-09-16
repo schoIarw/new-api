@@ -14,6 +14,9 @@ import (
 )
 
 func SetRouter(router *gin.Engine, assets ClassicAssets) {
+	// Expose a small dependency-aware readiness probe independently of the UI
+	// and relay routers. No credentials or dependency details are returned.
+	router.GET("/health/ready", controller.Readiness)
 	if common.RelayOnly {
 		// 网关模式：仅承载 API 协议面，注册顺序与管理模式保持一致
 		// （dashboard 先于 relay），管理操作由独立管理容器承载。
