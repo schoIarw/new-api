@@ -1,8 +1,8 @@
 import { showError as legacyShowError } from './utils';
 import { classifyApiError, retryDelayMs } from './apiFailurePolicy';
 
-// One availability state per browser tab; individual pages must not create
-// competing health-check loops when the database or proxy is unavailable.
+// One availability state per browser tab. A single recovery probe serves all
+// pages rather than creating a separate retry loop for every failed request.
 let snapshot = { status: 'online', reason: '', since: null };
 const subscribers = new Set();
 let retryTimer = null;
@@ -11,6 +11,7 @@ let probing = false;
 let lastServerNotice = 0;
 let serverFailureCount = 0;
 let serverFailureWindow = 0;
+const processedErrors = new WeakSet();
 
 export const getApiAvailability = () => snapshot;
 export function subscribeApiAvailability(listener) {
@@ -34,7 +35,7 @@ function clearRetry() {
 }
 
 function scheduleRetry() {
-  if (snapshot.status === 'online' || retryTimer !== null || probing) return;
+  if (snapshot.status === 'online' || snapshot.status === 'recovered' || retryTimer !== null || probing) return;
   const delay = retryDelayMs(retryAttempt++, Math.random());
   retryTimer = setTimeout(() => {
     retryTimer = null;
@@ -42,8 +43,8 @@ function scheduleRetry() {
   }, delay);
 }
 
-// The endpoint checks the primary DB with a deadline. /api/status alone is
-// insufficient: it can return cached settings while MySQL is still offline.
+// A successful /api/status can be served from cached options while the DB is
+// offline. The dedicated readiness endpoint checks DB and Redis with a deadline.
 export async function retryApiAvailability() {
   if (probing) return;
   clearRetry();
@@ -63,7 +64,9 @@ export async function retryApiAvailability() {
     if (!response.ok) throw new Error('Backend is not ready');
     retryAttempt = 0;
     serverFailureCount = 0;
-    setAvailability('online');
+    // Do not silently discard unsaved forms by reloading automatically.
+    // Let the operator decide when to refresh existing page data.
+    setAvailability('recovered', '服务连接已恢复');
   } catch (_error) {
     setAvailability('unavailable', snapshot.reason);
   } finally {
@@ -76,8 +79,11 @@ export async function retryApiAvailability() {
 export function reportApiFailure(error) {
   const kind = classifyApiError(error);
   if (!kind || error?.config?.skipAvailabilityTracking) return false;
+  // The global interceptor and individual page catches may see the same error.
+  if (processedErrors.has(error)) return true;
+  processedErrors.add(error);
   if (kind === 'server') {
-    // A single 500 may be a business-specific error, not a global outage.
+    // A single HTTP 500 can be specific to one operation, not a global outage.
     const now = Date.now();
     if (now - serverFailureWindow > 10000) {
       serverFailureCount = 0;
@@ -100,8 +106,8 @@ export function reportApiFailure(error) {
   return true;
 }
 
-// Re-exported explicitly by helpers/index.js. Page-level catch blocks that
-// call showError(error) no longer produce duplicate infrastructure toasts.
+// Exported explicitly by helpers/index.js. Page-level catches sharing the
+// Axios error cannot generate duplicate outage toasts.
 export function showError(error) {
   if (reportApiFailure(error)) return;
   legacyShowError(error);
