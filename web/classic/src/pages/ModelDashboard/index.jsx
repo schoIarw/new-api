@@ -84,6 +84,13 @@ const formatDuration = (seconds) => {
   return `${formatNumber(value, 2)} s`;
 };
 
+// 与 formatDuration 同义，但把数值与单位拆开，便于卡片用小字号渲染单位。
+const formatDurationParts = (seconds) => {
+  const value = Number(seconds || 0);
+  if (value > 0 && value < 1) return [Math.round(value * 1000), 'ms'];
+  return [formatNumber(value, 2), 's'];
+};
+
 const formatStep = (seconds) => {
   const value = Number(seconds || 0);
   if (value < 60) return `${value} 秒`;
@@ -107,11 +114,32 @@ const formatTimestamp = (timestamp, historical, rangeSeconds) => {
   return `${month}-${day} ${hh}:${mm}`;
 };
 
-const MetricCard = ({ title, value, sub }) => (
-  <Card style={{ flex: 1, minWidth: 165 }}>
+const MetricCard = ({ title, value, unit, sub, grow = 1, minWidth = 165 }) => (
+  <Card style={{ flex: `${grow} 1 0`, minWidth }}>
     <div style={{ textAlign: 'center' }}>
       <Text type='tertiary' size='small'>{title}</Text>
-      <div style={{ fontSize: 26, fontWeight: 700, margin: '8px 0 4px' }}>{value}</div>
+      <div
+        style={{
+          fontSize: 26,
+          fontWeight: 700,
+          margin: '8px 0 4px',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {value}
+        {unit ? (
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 400,
+              marginLeft: unit === '%' ? 0 : 3,
+              color: 'var(--semi-color-text-2)',
+            }}
+          >
+            {unit}
+          </span>
+        ) : null}
+      </div>
       <Text type='tertiary' size='small'>{sub}</Text>
     </div>
   </Card>
@@ -212,13 +240,15 @@ const ModelDashboard = () => {
       if (!rows.length) return 0;
       return total(field) / rows.length;
     };
+    const queueP95 = formatDurationParts(max('queue_p95_seconds'));
     return {
       models: rows.length,
       running: total('running'),
       waiting: total('waiting'),
       prefill: total('prefill_tokens_per_sec'),
       decode: total('decode_tokens_per_sec'),
-      queueP95Max: max('queue_p95_seconds'),
+      queueP95Value: queueP95[0],
+      queueP95Unit: queueP95[1],
       prefixAverage: average('prefix_cache_hit_rate'),
       kvMax: max('kv_cache_usage'),
     };
@@ -366,11 +396,40 @@ const ModelDashboard = () => {
               <MetricCard title='模型数' value={overview.models} sub='当前有指标的模型' />
               <MetricCard title='运行任务' value={Math.round(overview.running)} sub='全部模型合计' />
               <MetricCard title='排队任务' value={Math.round(overview.waiting)} sub='全部模型合计' />
-              <MetricCard title='Prefill 吞吐' value={`${formatNumber(overview.prefill, 1)} tok/s`} sub='全部模型合计' />
-              <MetricCard title='Decode 吞吐' value={`${formatNumber(overview.decode, 1)} tok/s`} sub='全部模型合计' />
-              <MetricCard title='最大 Queue P95' value={formatDuration(overview.queueP95Max)} sub='当前最慢模型' />
-              <MetricCard title='平均 Prefix 命中率' value={`${formatNumber(overview.prefixAverage, 1)}%`} sub='模型简单平均' />
-              <MetricCard title='最高 KV Cache' value={`${formatNumber(overview.kvMax, 1)}%`} sub='当前最高模型' />
+              <MetricCard
+                title='Prefill 吞吐'
+                value={formatNumber(overview.prefill, 1)}
+                unit='tok/s'
+                grow={1.5}
+                minWidth={215}
+                sub='全部模型合计'
+              />
+              <MetricCard
+                title='Decode 吞吐'
+                value={formatNumber(overview.decode, 1)}
+                unit='tok/s'
+                grow={1.5}
+                minWidth={215}
+                sub='全部模型合计'
+              />
+              <MetricCard
+                title='最大 Queue P95'
+                value={overview.queueP95Value}
+                unit={overview.queueP95Unit}
+                sub='当前最慢模型'
+              />
+              <MetricCard
+                title='平均 Prefix 命中率'
+                value={formatNumber(overview.prefixAverage, 1)}
+                unit='%'
+                sub='模型简单平均'
+              />
+              <MetricCard
+                title='最高 KV Cache'
+                value={formatNumber(overview.kvMax, 1)}
+                unit='%'
+                sub='当前最高模型'
+              />
             </div>
 
             <Card style={{ marginBottom: 16 }} title='模型当前运行状态'>
