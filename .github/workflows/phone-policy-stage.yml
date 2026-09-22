@@ -17,7 +17,9 @@ jobs:
           persist-credentials: true
           fetch-depth: 0
       - name: Apply reviewed source transformation
-        run: python3 scripts/apply_phone_rate_limit.py
+        run: |
+          python3 scripts/apply_phone_rate_limit.py
+          sed -i '/"github.com\/QuantumNous\/new-api\/setting"/d' middleware/phone_rate_limit.go
       - name: Format Go sources
         run: |
           gofmt -w setting/phone_rate_limit.go setting/phone_rate_limit_test.go middleware/phone_rate_limit.go middleware/phone_rate_limit_test.go middleware/model-rate-limit.go controller/phone_rate_limit.go router/rate-limit-management.go model/option.go
