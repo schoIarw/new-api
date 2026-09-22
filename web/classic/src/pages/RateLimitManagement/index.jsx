@@ -403,8 +403,48 @@ const RateLimitManagement = () => {
             </div>
           }
         >
-          <Tabs type='card' defaultActiveKey='general'>
-            <Tabs.TabPane tab='通用限流管理' itemKey='general'>
+          <Tabs type='card' defaultActiveKey='model-category'>
+            <Tabs.TabPane tab='模型分类' itemKey='model-category'>
+              <Card className='!rounded-xl mb-3' title='模型分类'>
+                <div className='flex items-center justify-between mb-3 gap-3'>
+                  <Text type='tertiary'>
+                    一个模型最多属于快速 / 旗舰 / 专用中的一个分类；分类变更会自动重新生成限流 JSON。
+                  </Text>
+                  <Input
+                    value={modelKeyword}
+                    onChange={(value) => {
+                      setModelKeyword(value);
+                      setModelPage(1);
+                    }}
+                    showClear
+                    placeholder='搜索模型名称'
+                    style={{ width: 240 }}
+                  />
+                </div>
+                <Table
+                  columns={modelColumns}
+                  dataSource={pagedModels}
+                  rowKey='model_name'
+                  pagination={false}
+                />
+                <div className='flex justify-end mt-3'>
+                  <Pagination
+                    currentPage={modelPage}
+                    pageSize={modelPageSize}
+                    total={filteredModels.length}
+                    showSizeChanger
+                    pageSizeOpts={[10, 20, 50, 100]}
+                    onPageChange={setModelPage}
+                    onPageSizeChange={(value) => {
+                      setModelPage(1);
+                      setModelPageSize(value);
+                    }}
+                  />
+                </div>
+              </Card>
+            </Tabs.TabPane>
+
+            <Tabs.TabPane tab='分组限流' itemKey='group-limits'>
               <Card className='!rounded-xl mb-3' title='基础限流参数'>
                 <div className='flex flex-wrap items-end gap-4'>
                   <div>
@@ -472,45 +512,7 @@ const RateLimitManagement = () => {
                 </div>
               </Card>
 
-              <Card className='!rounded-xl mb-3' title='模型分类'>
-                <div className='flex items-center justify-between mb-3 gap-3'>
-                  <Text type='tertiary'>
-                    一个模型最多属于快速 / 旗舰 / 专用中的一个分类；分类变更会自动重新生成限流 JSON。
-                  </Text>
-                  <Input
-                    value={modelKeyword}
-                    onChange={(value) => {
-                      setModelKeyword(value);
-                      setModelPage(1);
-                    }}
-                    showClear
-                    placeholder='搜索模型名称'
-                    style={{ width: 240 }}
-                  />
-                </div>
-                <Table
-                  columns={modelColumns}
-                  dataSource={pagedModels}
-                  rowKey='model_name'
-                  pagination={false}
-                />
-                <div className='flex justify-end mt-3'>
-                  <Pagination
-                    currentPage={modelPage}
-                    pageSize={modelPageSize}
-                    total={filteredModels.length}
-                    showSizeChanger
-                    pageSizeOpts={[10, 20, 50, 100]}
-                    onPageChange={setModelPage}
-                    onPageSizeChange={(value) => {
-                      setModelPage(1);
-                      setModelPageSize(value);
-                    }}
-                  />
-                </div>
-              </Card>
-
-              <Card className='!rounded-xl' title='按模型分类设置通用限流'>
+              <Card className='!rounded-xl' title='分组通用限流（按模型分类）'>
                 <Text type='tertiary'>
                   分类规则会展开到所有现有分组；[0,0] 表示该分类不设置基础限制。特殊配置可覆盖指定分组/模型。
                 </Text>
@@ -528,10 +530,9 @@ const RateLimitManagement = () => {
                   </Button>
                 </div>
               </Card>
-            </Tabs.TabPane>
 
-            <Tabs.TabPane tab='特殊限流配置' itemKey='special'>
-              <div className='flex items-center justify-between mb-3'>
+              <Card className='!rounded-xl mt-3' title='分组特殊限流'>
+                <div className='flex items-center justify-between mb-3'>
                 <Text type='tertiary'>
                   针对指定“分组 + 模型”覆盖通用分类限流；设置 [0,0] 可显式取消该模型在该分组的基础限制。
                 </Text>
@@ -549,8 +550,10 @@ const RateLimitManagement = () => {
                 rowKey='key'
                 pagination={false}
               />
+              </Card>
             </Tabs.TabPane>
-            <Tabs.TabPane tab='用户标识限流管理' itemKey='phone'>
+
+            <Tabs.TabPane tab='用户标识限流' itemKey='identifier-limits'>
               <UserIdentifierRateLimit groups={data?.groups || []} />
             </Tabs.TabPane>
           </Tabs>
@@ -558,7 +561,7 @@ const RateLimitManagement = () => {
 
         <Card className='!rounded-2xl mt-3' title='当前兼容限流 JSON'>
           <Text type='tertiary'>
-            该 JSON 仅用于用户和模型限流；手机号新策略独立保存为 PhoneRateLimitPolicies，旧顶层手机号数组仅用于未配置新策略的分组。
+            该 JSON 仅用于用户和模型限流；用户标识策略独立保存为 PhoneRateLimitPolicies，旧版顶层号码数组仅用于未配置新策略的分组。
           </Text>
           <TextArea
             className='mt-3'
