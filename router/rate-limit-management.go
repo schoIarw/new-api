@@ -19,5 +19,7 @@ func registerRateLimitManagementRoutes(apiRouter *gin.RouterGroup) {
 		route.PUT("/model-category", controller.UpsertRateLimitModelCategory)
 		route.DELETE("/model-category", controller.DeleteRateLimitModelCategory)
 		route.POST("/rebuild", controller.RebuildRateLimitManagement)
+		route.GET("/phone-policies", controller.GetPhoneRateLimitPolicies)
+		route.PUT("/phone-policies", controller.UpdatePhoneRateLimitPolicies)
 	}
 }

@@ -27,6 +27,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { Gauge, Tags } from 'lucide-react';
 import { API, showError, showSuccess } from '../../helpers';
+import PhoneRateLimit from './PhoneRateLimit';
 
 const { Text, Title } = Typography;
 const CATEGORY_KEYS = ['fast', 'flagship', 'dedicated'];
@@ -549,12 +550,15 @@ const RateLimitManagement = () => {
                 pagination={false}
               />
             </Tabs.TabPane>
+            <Tabs.TabPane tab='手机号限流管理' itemKey='phone'>
+              <PhoneRateLimit groups={data?.groups || []} />
+            </Tabs.TabPane>
           </Tabs>
         </Card>
 
         <Card className='!rounded-2xl mt-3' title='当前兼容限流 JSON'>
           <Text type='tertiary'>
-            该 JSON 为运行时最终配置，继续兼容现有 ModelRequestRateLimitGroup 规范；手机号/Account 顶层数组配置会保留。
+            该 JSON 仅用于用户和模型限流；手机号新策略独立保存为 PhoneRateLimitPolicies，旧顶层手机号数组仅用于未配置新策略的分组。
           </Text>
           <TextArea
             className='mt-3'

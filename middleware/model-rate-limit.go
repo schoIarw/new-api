@@ -357,18 +357,34 @@ func ModelRequestRateLimit() func(c *gin.Context) {
 
 		requestUser, requestModel := getRateLimitRequestMeta(c)
 
-		// 手机号/个人标识仍使用顶层数组配置，逻辑保持独立。
-		xUserId := subNumber(requestUser)
-		xUserGroupTotalCount, xUserGroupGroupSuccessCount, found := setting.GetGroupRateLimit(xUserId)
-		if !found {
-			xUserGroupTotalCount = -1
-			xUserGroupGroupSuccessCount = -1
-		}
-
 		group := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
 		if group == "" {
 			group = common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 		}
+
+		// New group-specific phone policies override only legacy phone policy,
+		// not the group's all/model limits. Old top-level phone limits are a
+		// global fallback when this token group has no new phone policy.
+		phoneID := strings.TrimSpace(requestUser)
+		phoneLimits, phoneConfigured, phoneActive := setting.ResolvePhoneRateLimit(group, phoneID)
+		phoneScope := group
+		if phoneConfigured {
+			if phoneActive && !setting.ValidPhoneNumber(phoneID) {
+				abortWithOpenAiMessage(c, http.StatusBadRequest, "当前令牌分组要求提供有效的 11 位手机号")
+				return
+			}
+		} else {
+			legacyID := subNumber(phoneID)
+			if legacyID != "" {
+				if total, success, exists := setting.GetGroupRateLimit(legacyID); exists {
+					phoneID = legacyID
+					phoneScope = "legacy"
+					phoneLimits = [2]int{total, success}
+				}
+			}
+		}
+		// Old handler phone branches are superseded by withPhoneRateLimit.
+		xUserId, xUserGroupTotalCount, xUserGroupGroupSuccessCount := "", 0, 0
 
 		groupTotalCount, groupSuccessCount := 0, 0
 		modelTotalCount, modelSuccessCount := 0, 0
@@ -422,22 +438,19 @@ func ModelRequestRateLimit() func(c *gin.Context) {
 				xUserGroupTotalCount,
 				xUserGroupGroupSuccessCount))
 
-		// 根据存储类型选择并执行限流处理器
+		// The phone limiter wraps the original model handler. Both layers must
+		// allow a request; a failed request releases its reserved completion slot.
+		var next gin.HandlerFunc
 		if common.RedisEnabled {
-			redisRateLimitHandler(
-				duration,
-				totalMaxCount, successMaxCount,
+			next = redisRateLimitHandler(duration, totalMaxCount, successMaxCount,
 				requestModel, modelTotalCount, modelSuccessCount,
-				xUserId, xUserGroupTotalCount, xUserGroupGroupSuccessCount,
-			)(c)
+				xUserId, xUserGroupTotalCount, xUserGroupGroupSuccessCount)
 		} else {
-			memoryRateLimitHandler(
-				duration,
-				totalMaxCount, successMaxCount,
+			next = memoryRateLimitHandler(duration, totalMaxCount, successMaxCount,
 				requestModel, modelTotalCount, modelSuccessCount,
-				xUserId, xUserGroupTotalCount, xUserGroupGroupSuccessCount,
-			)(c)
+				xUserId, xUserGroupTotalCount, xUserGroupGroupSuccessCount)
 		}
+		withPhoneRateLimit(c, phoneScope, phoneID, phoneLimits, duration, next)
 	}
 }
 
