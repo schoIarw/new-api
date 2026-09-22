@@ -26,7 +26,7 @@ func UpdatePhoneRateLimitPolicies(c *gin.Context) {
 		Policies json.RawMessage `json:"policies"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil || len(request.Policies) == 0 {
-		common.ApiErrorMsg(c, "手机号限流策略必须是 JSON 对象")
+		common.ApiErrorMsg(c, "用户标识限流策略必须是 JSON 对象")
 		return
 	}
 	policies, err := setting.ParsePhoneRateLimitPolicies(string(request.Policies))

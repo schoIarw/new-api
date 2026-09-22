@@ -362,24 +362,24 @@ func ModelRequestRateLimit() func(c *gin.Context) {
 			group = common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 		}
 
-		// New group-specific phone policies override only legacy phone policy,
-		// not the group's all/model limits. Old top-level phone limits are a
-		// global fallback when this token group has no new phone policy.
-		phoneID := strings.TrimSpace(requestUser)
-		phoneLimits, phoneConfigured, phoneActive := setting.ResolvePhoneRateLimit(group, phoneID)
-		phoneScope := group
-		if phoneConfigured {
-			if phoneActive && !setting.ValidPhoneNumber(phoneID) {
-				abortWithOpenAiMessage(c, http.StatusBadRequest, "当前令牌分组要求提供有效的 11 位手机号")
+		// Group-specific identifier policies override legacy top-level phone rules.
+		// Do not split the application identifier or impose a phone-number format.
+		identifier := strings.TrimSpace(requestUser)
+		identifierLimits, identifierConfigured, identifierActive, counterIdentity := setting.ResolveUserIdentifierRateLimit(group, identifier)
+		identifierGroup := group
+		if identifierConfigured {
+			if identifierActive && identifier == "" {
+				abortWithOpenAiMessage(c, http.StatusBadRequest, "当前令牌分组要求提供用户标识")
 				return
 			}
 		} else {
-			legacyID := subNumber(phoneID)
+			// Preserve old top-level number rules only when no new group policy exists.
+			legacyID := subNumber(identifier)
 			if legacyID != "" {
 				if total, success, exists := setting.GetGroupRateLimit(legacyID); exists {
-					phoneID = legacyID
-					phoneScope = "legacy"
-					phoneLimits = [2]int{total, success}
+					identifierGroup = "legacy"
+					counterIdentity = "identifier:" + legacyID
+					identifierLimits = [2]int{total, success}
 				}
 			}
 		}
@@ -450,7 +450,7 @@ func ModelRequestRateLimit() func(c *gin.Context) {
 				requestModel, modelTotalCount, modelSuccessCount,
 				xUserId, xUserGroupTotalCount, xUserGroupGroupSuccessCount)
 		}
-		withPhoneRateLimit(c, phoneScope, phoneID, phoneLimits, duration, next)
+		withPhoneRateLimit(c, identifierGroup, counterIdentity, identifierLimits, duration, next)
 	}
 }
 

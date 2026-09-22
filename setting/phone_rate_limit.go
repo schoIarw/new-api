@@ -4,16 +4,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"regexp"
 	"strings"
 	"sync"
+	"unicode/utf8"
 )
 
 const PhoneRateLimitPoliciesOptionKey = "PhoneRateLimitPolicies"
 
-var phoneNumberPattern = regexp.MustCompile(`^1[3-9][0-9]{9}$`)
-
-func ValidPhoneNumber(phone string) bool { return phoneNumberPattern.MatchString(phone) }
+// Special rules use literal prefixes (not regexes or phone-number parsing).
+// The minimum is eight Unicode characters, independent of UTF-8 byte length.
+func ValidUserIdentifierPrefix(prefix string) bool { return utf8.RuneCountInString(prefix) >= 8 }
 
 type PhoneRateLimitGroup struct {
 	Default *[2]int           `json:"default,omitempty"`
@@ -47,7 +47,7 @@ func phonePair(raw json.RawMessage, scope string) ([2]int, error) {
 // ParsePhoneRateLimitPolicies validates before any live configuration is changed.
 func ParsePhoneRateLimitPolicies(value string) (PhoneRateLimitPolicies, error) {
 	if strings.TrimSpace(value) == "" {
-		return nil, fmt.Errorf("手机号策略不能为空")
+		return nil, fmt.Errorf("用户标识策略不能为空")
 	}
 	var raw map[string]struct {
 		Default json.RawMessage            `json:"default"`
@@ -57,7 +57,7 @@ func ParsePhoneRateLimitPolicies(value string) (PhoneRateLimitPolicies, error) {
 		return nil, err
 	}
 	if raw == nil {
-		return nil, fmt.Errorf("手机号策略必须为 JSON 对象")
+		return nil, fmt.Errorf("用户标识策略必须为 JSON 对象")
 	}
 	result := make(PhoneRateLimitPolicies, len(raw))
 	for group, entry := range raw {
@@ -72,15 +72,15 @@ func ParsePhoneRateLimitPolicies(value string) (PhoneRateLimitPolicies, error) {
 			}
 			policy.Default = &pair
 		}
-		for phone, pairRaw := range entry.Special {
-			if !ValidPhoneNumber(phone) {
-				return nil, fmt.Errorf("%s: 特殊手机号格式无效", group)
+		for prefix, pairRaw := range entry.Special {
+			if !ValidUserIdentifierPrefix(prefix) {
+				return nil, fmt.Errorf("%s: 特殊用户标识前缀至少需要 8 个字符", group)
 			}
 			pair, err := phonePair(pairRaw, group+"/special")
 			if err != nil {
 				return nil, err
 			}
-			policy.Special[phone] = pair
+			policy.Special[prefix] = pair
 		}
 		result[group] = policy
 	}
@@ -108,27 +108,49 @@ func PhoneRateLimitPolicies2JSONString() string {
 	return string(encoded)
 }
 
-// ResolvePhoneRateLimit: a configured group suppresses the legacy global phone rule,
-// even when its default is absent or [0,0]. A special [0,0] overrides its default.
-func ResolvePhoneRateLimit(group, phone string) (limits [2]int, configured, active bool) {
+// ResolveUserIdentifierRateLimit returns the limit and a deterministic counter identity.
+// A configured group suppresses legacy top-level rules. Valid special prefixes
+// override the group default; the longest matching prefix wins. [0,0] explicitly
+// disables this layer. Default counters use the complete identifier, while all
+// identifiers matching the same special prefix share its counter.
+func ResolveUserIdentifierRateLimit(group, identifier string) (limits [2]int, configured, active bool, counterIdentity string) {
+	counterIdentity = "identifier:" + identifier
 	phonePolicyStore.RLock()
 	defer phonePolicyStore.RUnlock()
 	policy, found := phonePolicyStore.data[group]
 	if !found {
-		return limits, false, false
+		return limits, false, false, counterIdentity
 	}
 	if policy.Default != nil {
 		limits = *policy.Default
 		active = limits != [2]int{}
 	}
-	for _, pair := range policy.Special {
+	bestPrefix := ""
+	var bestLimit [2]int
+	for prefix, pair := range policy.Special {
+		// Defense in depth: old or injected prefixes shorter than eight
+		// characters must never become active or match an identifier.
+		if !ValidUserIdentifierPrefix(prefix) {
+			continue
+		}
 		if pair != [2]int{} {
 			active = true
-			break
+		}
+		if strings.HasPrefix(identifier, prefix) && len(prefix) > len(bestPrefix) {
+			bestPrefix = prefix
+			bestLimit = pair
 		}
 	}
-	if pair, exists := policy.Special[phone]; exists {
-		limits = pair
+	if bestPrefix != "" {
+		limits = bestLimit
+		counterIdentity = "prefix:" + bestPrefix
 	}
-	return limits, true, active
+	return limits, true, active, counterIdentity
+}
+
+// ResolvePhoneRateLimit is retained for existing callers. New gateway traffic
+// must use ResolveUserIdentifierRateLimit to obtain the matching counter scope.
+func ResolvePhoneRateLimit(group, identifier string) (limits [2]int, configured, active bool) {
+	limits, configured, active, _ = ResolveUserIdentifierRateLimit(group, identifier)
+	return limits, configured, active
 }

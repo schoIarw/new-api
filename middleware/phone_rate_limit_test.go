@@ -45,3 +45,22 @@ func TestPhoneMemoryRequestOnly(t *testing.T) {
 		t.Fatalf("request-only limit was bypassed: %d", got)
 	}
 }
+
+func TestUserIdentifierCounterScopeIsolation(t *testing.T) {
+	shared := identifierCounterScope("group1", "prefix:13701010")
+	if shared != identifierCounterScope("group1", "prefix:13701010") {
+		t.Fatal("same prefix must share counter")
+	}
+	if shared == identifierCounterScope("group2", "prefix:13701010") {
+		t.Fatal("group counters collided")
+	}
+	if shared == identifierCounterScope("group1", "identifier:13701010") {
+		t.Fatal("default and special counters collided")
+	}
+	if identifierCounterScope("group1", "identifier:alice|app1") == identifierCounterScope("group1", "identifier:alice|app2") {
+		t.Fatal("distinct full identifiers collided")
+	}
+	if identifierCounterScope("group1", "identifier:13701010202|appid|ip") == shared {
+		t.Fatal("full identifier unexpectedly shared prefix counter")
+	}
+}

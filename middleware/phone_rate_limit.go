@@ -85,8 +85,14 @@ func releasePhoneMemory(scope string, window int64) {
 	}
 }
 
-func withPhoneRateLimit(c *gin.Context, group, phone string, limits [2]int, duration int64, next gin.HandlerFunc) {
-	if limits == [2]int{} || phone == "" {
+// identifierCounterScope hashes both the token group and the selected scope.
+// "prefix:" and "identifier:" prevent a full ID from sharing a prefix bucket.
+func identifierCounterScope(group, counterIdentity string) string {
+	return common.GenerateHMAC("user-identifier-rate-limit-v3\x00" + group + "\x00" + counterIdentity)
+}
+
+func withPhoneRateLimit(c *gin.Context, group, counterIdentity string, limits [2]int, duration int64, next gin.HandlerFunc) {
+	if limits == [2]int{} || counterIdentity == "" {
 		next(c)
 		return
 	}
@@ -94,14 +100,14 @@ func withPhoneRateLimit(c *gin.Context, group, phone string, limits [2]int, dura
 		abortWithOpenAiMessage(c, http.StatusInternalServerError, "invalid_phone_limit_duration")
 		return
 	}
-	// No clear-text phone numbers in Redis or in-memory map keys.
-	scope := common.GenerateHMAC("phone-rate-limit-v2\x00" + group + "\x00" + phone)
+	// No clear-text user identifiers in Redis or in-memory map keys.
+	scope := identifierCounterScope(group, counterIdentity)
 	window := time.Now().Unix() / duration
 	var verdict int
 	var release func()
 	if common.RedisEnabled {
-		totalKey := fmt.Sprintf("rateLimit:phone:v2:%s:%d:request", scope, window)
-		successKey := fmt.Sprintf("rateLimit:phone:v2:%s:%d:success", scope, window)
+		totalKey := fmt.Sprintf("rateLimit:identifier:v3:%s:%d:request", scope, window)
+		successKey := fmt.Sprintf("rateLimit:identifier:v3:%s:%d:success", scope, window)
 		ctx := c.Request.Context()
 		value, err := phoneAcquireScript.Run(ctx, common.RDB, []string{totalKey, successKey}, limits[0], limits[1], duration*2).Int()
 		if err != nil {
@@ -128,7 +134,7 @@ func withPhoneRateLimit(c *gin.Context, group, phone string, limits [2]int, dura
 		}
 	}
 	if verdict != 0 {
-		abortWithOpenAiMessage(c, http.StatusTooManyRequests, "手机号已达到当前令牌分组的限流上限")
+		abortWithOpenAiMessage(c, http.StatusTooManyRequests, "用户标识已达到当前令牌分组的限流上限")
 		return
 	}
 	// Defer also runs after a panic, but a 2xx streaming header does not prove

@@ -550,7 +550,7 @@ const RateLimitManagement = () => {
                 pagination={false}
               />
             </Tabs.TabPane>
-            <Tabs.TabPane tab='手机号限流管理' itemKey='phone'>
+            <Tabs.TabPane tab='用户标识限流管理' itemKey='phone'>
               <PhoneRateLimit groups={data?.groups || []} />
             </Tabs.TabPane>
           </Tabs>
