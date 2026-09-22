@@ -1,0 +1,111 @@
+name: Release 2.1
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-2-1-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Test, package and publish 2.1
+    if: "${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.head_commit.message == 'release: 2.1') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact release source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify version
+        run: |
+          set -euo pipefail
+          test "$(tr -d '\r\n' < VERSION)" = '2.1'
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install classic dependencies
+        working-directory: web
+        run: bun install --filter ./classic
+      - name: Test and build production classic UI
+        working-directory: web/classic
+        env:
+          VITE_REACT_APP_VERSION: '2.1'
+        run: |
+          set -euo pipefail
+          bun test src/pages/RateLimitManagement/userIdentifierPolicy.test.js src/helpers/apiFailurePolicy.test.js
+          bun run build
+      - name: Compile and test Go backend with real embedded UI
+        run: |
+          set -euo pipefail
+          go mod download
+          go build ./...
+          go test ./... -count=1
+      - name: Build Linux amd64 release media
+        run: |
+          set -euo pipefail
+          version="$(tr -d '\r\n' < VERSION)"
+          package_dir="release/new-api-${version}-linux-amd64"
+          mkdir -p "$package_dir"
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -trimpath \
+              -ldflags "-s -w -X github.com/QuantumNous/new-api/common.Version=${version}" \
+              -o "$package_dir/new-api" .
+          cp VERSION LICENSE NOTICE THIRD-PARTY-LICENSES.md "$package_dir/"
+          tar -czf "release/new-api-${version}-linux-amd64.tar.gz" -C release "new-api-${version}-linux-amd64"
+          (cd release && sha256sum "new-api-${version}-linux-amd64.tar.gz" > "new-api-${version}-linux-amd64.tar.gz.sha256")
+          cat > release/NOTES.md <<'EOF'
+          ## New API 2.1 — user identifier prefix rate limiting
+
+          - Application user identifiers are arbitrary strings (including `13701010202|appid|ip`); no phone-number parsing or delimiter splitting.
+          - Special policy keys are literal prefixes of at least eight Unicode characters. The longest matching prefix takes precedence.
+          - Within each token group, matching special-prefix traffic shares one counter; ordinary traffic is counted separately per complete user identifier. Different groups remain isolated.
+          - Existing model limit JSON and historical `PhoneRateLimitPolicies` option key remain compatible. Legacy top-level phone rules apply only to groups without a new identifier policy.
+          - Redis counters move to `identifier:v3` and reset at upgrade. Keep `CRYPTO_SECRET` identical on all replicas, and use shared Redis for multi-node deployments.
+          - Tested: `go build ./...`, `go test ./... -count=1`, classic frontend tests and production build.
+
+          Media: Linux x86-64 / amd64 TAR.GZ containing the backend executable with embedded classic UI and license files. See `docs/phone-rate-limit.md` for behavior and limitations.
+          EOF
+      - name: Upload release package to Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: new-api-2.1-linux-amd64
+          path: |
+            release/new-api-2.1-linux-amd64.tar.gz
+            release/new-api-2.1-linux-amd64.tar.gz.sha256
+          retention-days: 90
+          if-no-files-found: error
+      - name: Create annotated tag and publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch --tags --force
+          if git rev-parse -q --verify refs/tags/2.1 >/dev/null; then
+            tagged_sha="$(git rev-list -n 1 2.1)"
+            test "$tagged_sha" = "$GITHUB_SHA" || { echo "Tag 2.1 points at $tagged_sha, not $GITHUB_SHA" >&2; exit 1; }
+          else
+            git tag -a 2.1 -m 'new-api 2.1 user identifier prefix rate limiting'
+            git push origin refs/tags/2.1
+          fi
+          if gh release view 2.1 >/dev/null 2>&1; then
+            gh release upload 2.1 release/new-api-2.1-linux-amd64.tar.gz release/new-api-2.1-linux-amd64.tar.gz.sha256 --clobber
+          else
+            gh release create 2.1 release/new-api-2.1-linux-amd64.tar.gz release/new-api-2.1-linux-amd64.tar.gz.sha256 --verify-tag --title 'new-api 2.1' --notes-file release/NOTES.md
+          fi
+          gh release view 2.1 --json url,tagName,assets
