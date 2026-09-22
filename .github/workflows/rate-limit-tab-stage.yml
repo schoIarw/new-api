@@ -16,9 +16,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: true
-      - name: Apply targeted JSX move and CI coverage
+      - name: Apply targeted JSX move
         run: |
           python3 scripts/reorganize_rate_limit_tabs.py
+          git restore .github/workflows/ci.yml
           git diff --check
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -39,6 +40,6 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add web/classic/src/pages/RateLimitManagement/index.jsx web/classic/src/pages/RateLimitManagement/tabLayout.test.js .github/workflows/ci.yml
+          git add web/classic/src/pages/RateLimitManagement/index.jsx web/classic/src/pages/RateLimitManagement/tabLayout.test.js
           git commit -m 'refactor(ui): organize rate limits into three tabs'
           git push origin HEAD:feat/rate-limit-three-tabs
