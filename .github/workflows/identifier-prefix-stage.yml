@@ -7,7 +7,7 @@ permissions:
   contents: write
 jobs:
   apply-and-verify:
-    if: "${{ github.event.head_commit.message == 'chore(dev): stage identifier workflow' }}"
+    if: "${{ github.event.head_commit.message == 'chore(dev): stage identifier polish' }}"
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -16,20 +16,11 @@ jobs:
         with:
           persist-credentials: true
           fetch-depth: 0
-      - name: Apply fail-fast source transformation
-        run: |
-          python3 scripts/apply_identifier_prefix.py
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('setting/phone_rate_limit_test.go')
-          content = path.read_text()
-          original = '"1234567":[1,1]'
-          assert content.count(original) == 1
-          path.write_text(content.replace(original, '"1234567":[2]int{1,1}', 1))
-          PY
+      - name: Apply follow-up fixes
+        run: python3 scripts/polish_identifier_prefix.py
       - name: Format and inspect changes
         run: |
-          gofmt -w setting/phone_rate_limit.go setting/phone_rate_limit_test.go middleware/model-rate-limit.go middleware/phone_rate_limit.go middleware/phone_rate_limit_test.go
+          gofmt -w middleware/model-rate-limit.go middleware/phone_rate_limit_test.go
           git diff --check
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -60,6 +51,6 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add setting/phone_rate_limit.go setting/phone_rate_limit_test.go middleware/model-rate-limit.go middleware/phone_rate_limit.go middleware/phone_rate_limit_test.go controller/phone_rate_limit.go web/classic/src/pages/RateLimitManagement/PhoneRateLimit.jsx web/classic/src/pages/RateLimitManagement/index.jsx web/classic/src/pages/RateLimitManagement/userIdentifierPolicy.js web/classic/src/pages/RateLimitManagement/userIdentifierPolicy.test.js docs/phone-rate-limit.md
-          git commit -m 'feat(rate-limit): longest-prefix user identifier policies and shared counters'
+          git add middleware/model-rate-limit.go middleware/phone_rate_limit_test.go web/classic/src/pages/RateLimitManagement/PhoneRateLimit.jsx web/classic/src/pages/RateLimitManagement/index.jsx docs/phone-rate-limit.md
+          git commit -m 'fix(rate-limit): preserve arbitrary identifier strings and clarify prefix UI'
           git push origin HEAD:feat/user-identifier-prefix-release
