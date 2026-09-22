@@ -325,7 +325,7 @@ func getRateLimitRequestMeta(c *gin.Context) (userId, modelName string) {
 				var meta rateLimitRequestMeta
 				if json.Unmarshal(bodyBytes, &meta) == nil {
 					if strings.TrimSpace(meta.User) != "" {
-						userId = strings.TrimSpace(meta.User)
+						userId = meta.User
 					}
 					if modelName == "" && strings.TrimSpace(meta.Model) != "" {
 						modelName = strings.TrimSpace(meta.Model)
@@ -364,11 +364,11 @@ func ModelRequestRateLimit() func(c *gin.Context) {
 
 		// Group-specific identifier policies override legacy top-level phone rules.
 		// Do not split the application identifier or impose a phone-number format.
-		identifier := strings.TrimSpace(requestUser)
+		identifier := requestUser
 		identifierLimits, identifierConfigured, identifierActive, counterIdentity := setting.ResolveUserIdentifierRateLimit(group, identifier)
 		identifierGroup := group
 		if identifierConfigured {
-			if identifierActive && identifier == "" {
+			if identifierActive && strings.TrimSpace(identifier) == "" {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, "当前令牌分组要求提供用户标识")
 				return
 			}

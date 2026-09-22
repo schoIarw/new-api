@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Card, Input, InputNumber, Modal, Select, Space, Table, Tag, Typography } from '@douyinfe/semi-ui';
 import { API, showError, showSuccess } from '../../helpers';
+import { isValidIdentifierPrefix } from './userIdentifierPolicy';
 
 const { Text } = Typography;
-import { isValidIdentifierPrefix } from './userIdentifierPolicy';
 const pair = (values) => Array.isArray(values) && values.length === 2 ? values : [0, 0];
 
-export default function PhoneRateLimit({ groups = [] }) {
+export default function UserIdentifierRateLimit({ groups = [] }) {
   const [policies, setPolicies] = useState({});
   const [busy, setBusy] = useState(false);
   const [modal, setModal] = useState(false);
@@ -51,7 +51,7 @@ export default function PhoneRateLimit({ groups = [] }) {
     });
   };
   const open = (row) => {
-    setEditing(row ? `${row.group}:${row.prefix}` : null);
+    setEditing(row ? JSON.stringify([row.group, row.prefix]) : null);
     setForm(row ? {group: row.group, prefix: row.prefix, total: pair(row.limits)[0], success: pair(row.limits)[1]}
       : { group: '', prefix: '', total: 0, success: 0 });
     setModal(true);
@@ -61,7 +61,7 @@ export default function PhoneRateLimit({ groups = [] }) {
     const next = structuredClone(policies);
     if (!next[form.group]) next[form.group] = { default: [0,0], special: {} };
     if (!next[form.group].special) next[form.group].special = {};
-    next[form.group].special[form.prefix] = [Number(form.total)||0, Number(form.success)||0];
+    next[form.group].special = { ...next[form.group].special, [form.prefix]: [Number(form.total)||0, Number(form.success)||0] };
     void save(next);
   };
   const remove = (row) => {
@@ -83,8 +83,8 @@ export default function PhoneRateLimit({ groups = [] }) {
     <Card className='!rounded-xl' title='分组特殊用户标识前缀限流'>
       <div className='flex justify-between mb-3'><Text type='tertiary'>特殊规则只覆盖本分组的用户标识通用规则，不覆盖模型限流。</Text>
         <Button type='primary' onClick={()=>open(null)}>新增特殊前缀</Button></div>
-      <Table rowKey={row=>`${row.group}:${row.prefix}`} dataSource={specialRows} pagination={false} columns={[
-        { title:'令牌分组', dataIndex:'group' }, { title:'用户标识', dataIndex:'prefix' },
+      <Table rowKey={row=>JSON.stringify([row.group, row.prefix])} dataSource={specialRows} pagination={false} columns={[
+        { title:'令牌分组', dataIndex:'group' }, { title:'用户标识前缀', dataIndex:'prefix' },
         { title:'最多请求数', render:(_,row)=>pair(row.limits)[0] },
         { title:'最多完成数', render:(_,row)=>pair(row.limits)[1] },
         { title:'操作', render:(_,row)=><Space><Button size='small' onClick={()=>open(row)}>编辑</Button><Button size='small' type='danger' onClick={()=>remove(row)}>删除</Button></Space> },
@@ -92,12 +92,12 @@ export default function PhoneRateLimit({ groups = [] }) {
     </Card>
     <Card className='!rounded-xl mt-3' title='独立用户标识策略 JSON（PhoneRateLimitPolicies）'>
       <pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{JSON.stringify(policies,null,2)}</pre>
-      <Text type='tertiary'>未配置新策略的令牌分组，继续兼容旧版顶层用户标识数组规则。</Text>
+      <Text type='tertiary'>未配置新策略的令牌分组，继续兼容旧版顶层号码数组规则。</Text>
     </Card>
     <Modal title={editing?'编辑特殊用户标识前缀':'新增特殊用户标识前缀'} visible={modal} onCancel={()=>setModal(false)} onOk={saveSpecial} okButtonProps={{loading:busy}}>
       <div className='grid gap-3'>
         <div><Text type='tertiary'>令牌分组</Text><Select style={{width:'100%',marginTop:6}} disabled={Boolean(editing)} value={form.group} optionList={groups.map(g=>({label:g,value:g}))} onChange={v=>setForm(p=>({...p,group:v}))}/></div>
-        <div><Text type='tertiary'>用户标识</Text><Input style={{marginTop:6}} disabled={Boolean(editing)} value={form.prefix} onChange={v=>setForm(p=>({...p,prefix:v}))}/></div>
+        <div><Text type='tertiary'>用户标识前缀（至少 8 个字符）</Text><Input style={{marginTop:6}} disabled={Boolean(editing)} value={form.prefix} onChange={v=>setForm(p=>({...p,prefix:v}))}/></div>
         <div><Text type='tertiary'>每周期最多请求数</Text><InputNumber min={0} style={{width:'100%',marginTop:6}} value={form.total} onChange={v=>setForm(p=>({...p,total:Number(v)||0}))}/></div>
         <div><Text type='tertiary'>每周期最多完成数</Text><InputNumber min={0} style={{width:'100%',marginTop:6}} value={form.success} onChange={v=>setForm(p=>({...p,success:Number(v)||0}))}/></div>
       </div>

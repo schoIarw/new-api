@@ -1,9 +1,15 @@
 package middleware
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/gin-gonic/gin"
 )
 
 func TestPhoneMemoryIndependentScopeAndReservation(t *testing.T) {
@@ -62,5 +68,19 @@ func TestUserIdentifierCounterScopeIsolation(t *testing.T) {
 	}
 	if identifierCounterScope("group1", "identifier:13701010202|appid|ip") == shared {
 		t.Fatal("full identifier unexpectedly shared prefix counter")
+	}
+}
+
+func TestIdentifierRequestBodyPreservesArbitraryString(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	body := `{"user":"  tenant001|appid|ip  ","model":"demo"}`
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	identifier, model := getRateLimitRequestMeta(c)
+	if identifier != "  tenant001|appid|ip  " || model != "demo" {
+		t.Fatalf("identifier was normalized or model lost: %q %q", identifier, model)
+	}
+	restored, err := io.ReadAll(c.Request.Body)
+	if err != nil || string(restored) != body {
+		t.Fatalf("request body was not preserved: %q %v", restored, err)
 	}
 }

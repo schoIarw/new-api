@@ -27,7 +27,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { Gauge, Tags } from 'lucide-react';
 import { API, showError, showSuccess } from '../../helpers';
-import PhoneRateLimit from './PhoneRateLimit';
+import UserIdentifierRateLimit from './PhoneRateLimit';
 
 const { Text, Title } = Typography;
 const CATEGORY_KEYS = ['fast', 'flagship', 'dedicated'];
@@ -551,7 +551,7 @@ const RateLimitManagement = () => {
               />
             </Tabs.TabPane>
             <Tabs.TabPane tab='用户标识限流管理' itemKey='phone'>
-              <PhoneRateLimit groups={data?.groups || []} />
+              <UserIdentifierRateLimit groups={data?.groups || []} />
             </Tabs.TabPane>
           </Tabs>
         </Card>
