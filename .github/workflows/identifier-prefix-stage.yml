@@ -17,7 +17,16 @@ jobs:
           persist-credentials: true
           fetch-depth: 0
       - name: Apply fail-fast source transformation
-        run: python3 scripts/apply_identifier_prefix.py
+        run: |
+          python3 scripts/apply_identifier_prefix.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('setting/phone_rate_limit_test.go')
+          content = path.read_text()
+          original = '"1234567":[1,1]'
+          assert content.count(original) == 1
+          path.write_text(content.replace(original, '"1234567":[2]int{1,1}', 1))
+          PY
       - name: Format and inspect changes
         run: |
           gofmt -w setting/phone_rate_limit.go setting/phone_rate_limit_test.go middleware/model-rate-limit.go middleware/phone_rate_limit.go middleware/phone_rate_limit_test.go
