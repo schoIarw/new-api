@@ -2,11 +2,11 @@
 from pathlib import Path
 
 
-def replace(path, old, new):
+def replace(path, old, new, expected=1):
     p = Path(path)
     content = p.read_text(encoding='utf-8')
-    assert content.count(old) == 1, f'{path}: expected single match for {old!r}, got {content.count(old)}'
-    p.write_text(content.replace(old, new, 1), encoding='utf-8')
+    assert content.count(old) == expected, f'{path}: expected {expected} matches for {old!r}, got {content.count(old)}'
+    p.write_text(content.replace(old, new, expected), encoding='utf-8')
 
 
 model = 'middleware/model-rate-limit.go'
@@ -22,8 +22,7 @@ replace(ui, "{ title:'用户标识', dataIndex:'prefix' }", "{ title:'用户标�
 replace(ui, "<Text type='tertiary'>用户标识</Text><Input", "<Text type='tertiary'>用户标识前缀（至少 8 个字符）</Text><Input")
 replace(ui, '继续兼容旧版顶层用户标识数组规则', '继续兼容旧版顶层号码数组规则')
 replace(ui, 'next[form.group].special[form.prefix] = [Number(form.total)||0, Number(form.success)||0];', 'next[form.group].special = { ...next[form.group].special, [form.prefix]: [Number(form.total)||0, Number(form.success)||0] };')
-replace(ui, '`${row.group}:${row.prefix}`', 'JSON.stringify([row.group, row.prefix])')
-replace(ui, '`${row.group}:${row.prefix}`', 'JSON.stringify([row.group, row.prefix])')
+replace(ui, '`${row.group}:${row.prefix}`', 'JSON.stringify([row.group, row.prefix])', expected=2)
 index = 'web/classic/src/pages/RateLimitManagement/index.jsx'
 replace(index, "import PhoneRateLimit from './PhoneRateLimit';", "import UserIdentifierRateLimit from './PhoneRateLimit';")
 replace(index, '<PhoneRateLimit groups={data?.groups || []} />', '<UserIdentifierRateLimit groups={data?.groups || []} />')
