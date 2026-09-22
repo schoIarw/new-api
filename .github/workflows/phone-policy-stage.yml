@@ -1,0 +1,56 @@
+name: Apply phone rate limit implementation
+on:
+  push:
+    branches:
+      - feat/phone-group-rate-limit
+permissions:
+  contents: write
+jobs:
+  apply-and-verify:
+    if: "${{ github.event.head_commit.message == 'chore(dev): stage phone rate limit workflow' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+      - name: Apply reviewed source transformation
+        run: python3 scripts/apply_phone_rate_limit.py
+      - name: Format Go sources
+        run: |
+          gofmt -w setting/phone_rate_limit.go setting/phone_rate_limit_test.go middleware/phone_rate_limit.go middleware/phone_rate_limit_test.go middleware/model-rate-limit.go controller/phone_rate_limit.go router/rate-limit-management.go model/option.go
+          git diff --check
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Prepare embedded frontend placeholder
+        run: |
+          mkdir -p web/classic/dist
+          printf '<!doctype html><html><body>CI placeholder</body></html>\n' > web/classic/dist/index.html
+      - name: Go compile and tests
+        run: |
+          go build ./...
+          go test ./... -count=1
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install classic dependencies
+        working-directory: web
+        run: bun install --filter ./classic
+      - name: Frontend regression tests and build
+        working-directory: web/classic
+        run: |
+          bun test src/helpers/apiFailurePolicy.test.js
+          bun run build
+      - name: Commit verified code to feature branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add setting/phone_rate_limit.go setting/phone_rate_limit_test.go middleware/phone_rate_limit.go middleware/phone_rate_limit_test.go middleware/model-rate-limit.go controller/phone_rate_limit.go router/rate-limit-management.go model/option.go web/classic/src/pages/RateLimitManagement docs/phone-rate-limit.md
+          git commit -m 'feat(rate-limit): add per-token-group phone policies and atomic counters'
+          git push origin HEAD:feat/phone-group-rate-limit
