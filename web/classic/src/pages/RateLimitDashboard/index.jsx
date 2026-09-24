@@ -41,13 +41,28 @@ const CHART_CONFIG = { mode: 'desktop-browser' };
 const REFRESH_INTERVAL_MS = 10000;
 
 const COLOR_RATE_LIMITED = '#ef4444';
-const COLOR_NORMAL = '#3b82f6';
+const LIMIT_TYPE_COLORS = {
+  group: '#f59e0b',
+  group_model: '#8b5cf6',
+  group_phone: '#06b6d4',
+  unconfigured: '#64748b',
+};
+const LIMIT_TYPE_LABELS = {
+  group: '令牌组阈值',
+  group_model: '令牌组 + 模型阈值',
+  group_phone: '令牌组 + 手机号阈值',
+  unconfigured: '未配置阈值',
+};
 
 const PERIOD_VALUES = [10, 20, 40, 80];
-const REALTIME_PERIOD_OPTIONS = PERIOD_VALUES.map((value) => ({
-  label: `最近 ${value} 周期`,
-  value,
-}));
+const REALTIME_PERIOD_OPTIONS = [
+  { label: '最近 30 分钟', value: 'minutes:30' },
+  { label: '最近 10 分钟', value: 'minutes:10' },
+  ...PERIOD_VALUES.map((value) => ({
+    label: `最近 ${value} 周期`,
+    value: `periods:${value}`,
+  })),
+];
 const HISTORICAL_PERIOD_OPTIONS = PERIOD_VALUES.map((value) => ({
   label: `${value} 个周期`,
   value,
@@ -61,6 +76,7 @@ const REFRESH_OPTIONS = [
 ];
 const DEFAULT_REFRESH = 30;
 const DEFAULT_PERIODS = 10;
+const DEFAULT_REALTIME_RANGE = 'minutes:30';
 
 // 周期标签：实时模式显示“前 N 周期”，历史模式显示周期开始时间。
 function periodLabel(periodIndex, startTimestamp, isHistorical) {
@@ -79,11 +95,12 @@ function periodLabel(periodIndex, startTimestamp, isHistorical) {
 const RateLimitDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState('realtime');
-  const [periods, setPeriods] = useState(DEFAULT_PERIODS);
+  const [realtimeRange, setRealtimeRange] = useState(DEFAULT_REALTIME_RANGE);
   const [historyStart, setHistoryStart] = useState(null);
   const [historyPeriods, setHistoryPeriods] = useState(DEFAULT_PERIODS);
   const [chartData, setChartData] = useState([]);
   const [durationMinutes, setDurationMinutes] = useState(10);
+  const [realtimePeriodCount, setRealtimePeriodCount] = useState(0);
   const [summary, setSummary] = useState({ total: 0, limited: 0 });
   const [filterKey, setFilterKey] = useState('');
   const [filterAccount, setFilterAccount] = useState('');
@@ -91,14 +108,14 @@ const RateLimitDashboard = () => {
   const refreshTimerRef = useRef(null);
 
   const isHistorical = mode === 'historical';
-  const selectedPeriodCount = isHistorical ? historyPeriods : periods;
+  const selectedPeriodCount = isHistorical ? historyPeriods : realtimePeriodCount;
 
   const keyOptions = useMemo(() => {
     const set = new Set();
     chartData.forEach((r) => {
-      if (r.tokenName) set.add(r.tokenName);
+      if (r.group) set.add(r.group);
     });
-    const opts = [{ label: '全部 Key', value: '' }];
+    const opts = [{ label: '全部令牌组', value: '' }];
     [...set].sort().forEach((k) => opts.push({ label: k, value: k }));
     return opts;
   }, [chartData]);
@@ -113,7 +130,7 @@ const RateLimitDashboard = () => {
       return [];
     }
     return chartData.filter((r) => {
-      if (filterKey && r.tokenName !== filterKey) return false;
+      if (filterKey && r.group !== filterKey) return false;
       if (kw.length >= 7 && !(r.account || '').toLowerCase().includes(kw)) return false;
       return true;
     });
@@ -146,7 +163,7 @@ const RateLimitDashboard = () => {
     [historyStart, historyPeriods, durationMinutes],
   );
 
-  // 拉取数据。实时模式只传 periods；历史模式只传 start_timestamp + periods。
+  // 拉取数据。实时模式可按分钟范围或限流周期数查询；历史模式按周期查询。
   const loadData = useCallback(async () => {
     if (isHistorical && !historyStart) {
       setChartData([]);
@@ -161,7 +178,9 @@ const RateLimitDashboard = () => {
             start_timestamp: Math.floor(historyStart.getTime() / 1000),
             periods: historyPeriods,
           }
-        : { periods };
+        : realtimeRange.startsWith('minutes:')
+          ? { minutes: Number(realtimeRange.split(':')[1]) }
+          : { periods: Number(realtimeRange.split(':')[1]) };
 
       const res = await API.get('/api/log/rate_limit_dashboard', { params });
       if (!res.data.success) {
@@ -176,15 +195,18 @@ const RateLimitDashboard = () => {
       );
       const dm = data.duration_minutes || 10;
       setDurationMinutes(dm);
+      setRealtimePeriodCount(data.period_count || 0);
 
       const rows = [];
       const limitedSet = new Set();
       const keys = new Set();
+      const metaByKey = new Map();
 
       periodList.forEach((p) => {
         (p.items || []).forEach((item) => {
-          const key = `${item.token_name}||${item.account}`;
+          const key = item.limit_key;
           keys.add(key);
+          metaByKey.set(key, item);
           if (item.rate_limited) limitedSet.add(key);
         });
       });
@@ -193,22 +215,23 @@ const RateLimitDashboard = () => {
         const label = periodLabel(p.period_index, p.start_timestamp, isHistorical);
         const map = new Map();
         (p.items || []).forEach((item) => {
-          map.set(`${item.token_name}||${item.account}`, item);
+          map.set(item.limit_key, item);
         });
         keys.forEach((key) => {
           const item = map.get(key);
-          const [tokenName, account] = key.split('||');
-          const displayToken = tokenName || '(未命名Token)';
-          const displayAccount = account || '(空账号)';
+          const meta = metaByKey.get(key) || {};
           rows.push({
             period: label,
             periodIndex: p.period_index,
             key,
-            name: `${displayToken} / ${displayAccount}`,
-            tokenName,
-            account,
+            name: meta.label || key,
+            tokenName: meta.token_name || '',
+            group: meta.group || '',
+            modelName: meta.model_name || '',
+            account: meta.account || '',
+            limitType: meta.limit_type || 'unconfigured',
             count: item ? item.count : 0,
-            successLimit: item ? item.success_limit : 0,
+            successLimit: meta.success_limit || 0,
             rateLimited: item ? item.rate_limited : false,
           });
         });
@@ -221,7 +244,7 @@ const RateLimitDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [periods, isHistorical, historyStart, historyPeriods]);
+  }, [realtimeRange, isHistorical, historyStart, historyPeriods]);
 
   useEffect(() => {
     loadData();
@@ -248,10 +271,9 @@ const RateLimitDashboard = () => {
   const spec = useMemo(() => {
     const colorMap = {};
     filteredChartData.forEach((row) => {
-      if (row.rateLimited) {
-        colorMap[row.name] = COLOR_RATE_LIMITED;
-      } else if (!(row.name in colorMap)) {
-        colorMap[row.name] = COLOR_NORMAL;
+      if (!(row.name in colorMap)) {
+        colorMap[row.name] =
+          LIMIT_TYPE_COLORS[row.limitType] || LIMIT_TYPE_COLORS.unconfigured;
       }
     });
 
@@ -270,7 +292,7 @@ const RateLimitDashboard = () => {
       },
       title: {
         visible: true,
-        text: 'Token名 / Account 请求数趋势',
+        text: '限流阈值请求数趋势',
         subtext: `限流周期：${durationMinutes} 分钟 ｜ 查询：${selectedPeriodCount} 个周期${isHistorical ? ' ｜ 历史数据' : ''}`,
       },
       line: { style: { lineWidth: 2 } },
@@ -283,7 +305,9 @@ const RateLimitDashboard = () => {
         style: {
           fill: (datum) => {
             const d = datum && typeof datum === 'object' ? datum : {};
-            return d.rateLimited ? COLOR_RATE_LIMITED : COLOR_NORMAL;
+            return d.rateLimited
+              ? COLOR_RATE_LIMITED
+              : LIMIT_TYPE_COLORS[d.limitType] || LIMIT_TYPE_COLORS.unconfigured;
           },
           stroke: '#fff',
           lineWidth: 1,
@@ -323,8 +347,13 @@ const RateLimitDashboard = () => {
       tooltip: {
         mark: {
           content: [
-            { key: 'Token名', value: (datum) => datum?.tokenName || '-' },
-            { key: 'Account', value: (datum) => datum?.account || '-' },
+            {
+              key: '阈值类型',
+              value: (datum) => LIMIT_TYPE_LABELS[datum?.limitType] || '-',
+            },
+            { key: '令牌组', value: (datum) => datum?.group || '-' },
+            { key: '模型', value: (datum) => datum?.modelName || '-' },
+            { key: '手机号/标识', value: (datum) => datum?.account || '-' },
             { key: '请求数', value: (datum) => `${datum?.count ?? 0}` },
             {
               key: '限流上限',
@@ -355,6 +384,18 @@ const RateLimitDashboard = () => {
                 <Tag color={summary.limited > 0 ? 'red' : 'green'} size='small'>
                   被限流 {summary.limited} / 共 {summary.total}
                 </Tag>
+                {['group', 'group_model', 'group_phone'].map((type) => (
+                  <Tag
+                    key={type}
+                    size='small'
+                    style={{
+                      color: '#fff',
+                      backgroundColor: LIMIT_TYPE_COLORS[type],
+                    }}
+                  >
+                    {LIMIT_TYPE_LABELS[type]}
+                  </Tag>
+                ))}
               </div>
               <div className='flex flex-wrap items-center gap-2'>
                 <RadioGroup type='button' value={mode} onChange={handleModeChange}>
@@ -380,8 +421,8 @@ const RateLimitDashboard = () => {
                 ) : (
                   <>
                     <Select
-                      value={periods}
-                      onChange={(v) => setPeriods(v)}
+                      value={realtimeRange}
+                      onChange={(v) => setRealtimeRange(v)}
                       optionList={REALTIME_PERIOD_OPTIONS}
                       style={{ width: 140 }}
                     />
@@ -408,7 +449,7 @@ const RateLimitDashboard = () => {
                 value={filterKey}
                 onChange={(v) => setFilterKey(v || '')}
                 optionList={keyOptions}
-                placeholder='选择 Key'
+                placeholder='选择令牌组'
                 style={{ width: 180 }}
               />
               <Input

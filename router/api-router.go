@@ -274,6 +274,8 @@ func SetApiRouter(router *gin.Engine) {
 		logRoute.GET("/performance_dashboard", middleware.AdminAuth(), controller.GetPerformanceDashboard)
 		logRoute.GET("/mysql_monitor", middleware.AdminAuth(), controller.GetMySQLMonitor)
 		logRoute.POST("/mysql_kill", middleware.AdminAuth(), controller.KillMySQLProcess)
+		logRoute.GET("/history-migration/status", middleware.RootAuth(), controller.GetLogHistoryMigrationStatus)
+		logRoute.POST("/history-migration/run", middleware.RootAuth(), controller.RunLogHistoryMigration)
 		logRoute.GET("/self/stat", middleware.UserAuth(), controller.GetLogsSelfStat)
 		logRoute.GET("/channel_affinity_usage_cache", middleware.AdminAuth(), controller.GetChannelAffinityUsageCacheStats)
 		logRoute.GET("/search", middleware.AdminAuth(), controller.SearchAllLogs)

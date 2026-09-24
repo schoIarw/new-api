@@ -30,6 +30,28 @@ func parseRateLimitDashboardPeriods(raw string) (int, error) {
 	return periods, nil
 }
 
+func resolveRateLimitDashboardPeriods(rawPeriods, rawMinutes string, durationSec int64) (periods int, requestedMinutes int, err error) {
+	if durationSec <= 0 {
+		return 0, 0, errors.New("限流周期配置必须大于0")
+	}
+	if rawMinutes == "" && rawPeriods == "" {
+		rawMinutes = "30"
+	}
+	if rawMinutes != "" {
+		minutes, parseErr := strconv.Atoi(rawMinutes)
+		if parseErr != nil || minutes < 1 || minutes > 24*60 {
+			return 0, 0, errors.New("实时查询分钟数必须在1到1440之间")
+		}
+		periods = int((int64(minutes)*60 + durationSec - 1) / durationSec)
+		if periods > maxRateLimitDashboardPeriods {
+			return 0, 0, errors.New("所选时间范围超过80个限流周期")
+		}
+		return periods, minutes, nil
+	}
+	periods, err = parseRateLimitDashboardPeriods(rawPeriods)
+	return periods, 0, err
+}
+
 // rateLimitDashboardWindow resolves the query window for both modes.
 // Realtime: [now-periods*duration, now)
 // Historical: [start, start+periods*duration)
@@ -64,7 +86,10 @@ func buildRateLimitPeriodData(
 			continue
 		}
 		statsByPeriod[s.PeriodIndex] = append(statsByPeriod[s.PeriodIndex], model.RateLimitGroupStat{
+			UserID:    s.UserID,
+			Group:     s.Group,
 			TokenName: s.TokenName,
+			ModelName: s.ModelName,
 			Account:   s.Account,
 			Count:     s.Count,
 		})
@@ -106,13 +131,13 @@ func buildRateLimitPeriodData(
 // Realtime: periods=N, where N is the number of most recent rate-limit periods.
 // Historical: start_timestamp + periods=N. The end time is derived server-side.
 func GetRateLimitDashboardV2(c *gin.Context) {
-	periods, err := parseRateLimitDashboardPeriods(c.Query("periods"))
+	durationSec := int64(setting.ModelRequestRateLimitDurationMinutes * 60)
+	periods, requestedMinutes, err := resolveRateLimitDashboardPeriods(c.Query("periods"), c.Query("minutes"), durationSec)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}
 
-	durationSec := int64(setting.ModelRequestRateLimitDurationMinutes * 60)
 	startTS, err := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	if c.Query("start_timestamp") != "" && err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "历史查询开始时间无效"})
@@ -148,6 +173,7 @@ func GetRateLimitDashboardV2(c *gin.Context) {
 			"mode":             mode,
 			"duration_minutes": setting.ModelRequestRateLimitDurationMinutes,
 			"period_count":     periods,
+			"requested_minutes": requestedMinutes,
 			"start_timestamp":  queryStart,
 			"end_timestamp":    queryEnd,
 			"periods":          periodData,

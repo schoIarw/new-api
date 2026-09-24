@@ -70,7 +70,7 @@ type modelMetricDefinition struct {
 }
 
 // GetVLLMModelRuntimeDashboard 从 Prometheus 查询 vLLM 运行指标。
-// 实时模式：hours=1/2/4/8，持续刷新由前端控制。
+// 实时模式：minutes=10/30/60/120/240/480，持续刷新由前端控制。
 // 历史模式：start_timestamp + end_timestamp，不限制查询跨度；后端会根据跨度自动放大 step，
 // 控制单条时序的点数，避免超长历史查询返回过多采样点。
 func GetVLLMModelRuntimeDashboard(c *gin.Context) {
@@ -207,15 +207,20 @@ func resolveModelDashboardRange(c *gin.Context) (startTimestamp int64, endTimest
 		return startTS, endTS, true, nil
 	}
 
-	hours, _ := strconv.Atoi(c.Query("hours"))
-	if hours <= 0 {
-		hours = 1
+	minutes, _ := strconv.Atoi(c.Query("minutes"))
+	if minutes <= 0 {
+		// Backward compatibility for callers that still send hours.
+		hours, _ := strconv.Atoi(c.Query("hours"))
+		minutes = hours * 60
 	}
-	if hours > 8 {
-		hours = 8
+	if minutes <= 0 {
+		minutes = 30
+	}
+	if minutes > 8*60 {
+		minutes = 8 * 60
 	}
 	endTimestamp = time.Now().Unix()
-	startTimestamp = endTimestamp - int64(hours)*3600
+	startTimestamp = endTimestamp - int64(minutes)*60
 	return startTimestamp, endTimestamp, false, nil
 }
 
@@ -227,6 +232,8 @@ func modelDashboardStepSeconds(durationSeconds int64, historical bool) int64 {
 	}
 	if !historical {
 		switch {
+		case durationSeconds <= 30*60:
+			return 60
 		case durationSeconds <= 2*3600:
 			return 30
 		case durationSeconds <= 4*3600:

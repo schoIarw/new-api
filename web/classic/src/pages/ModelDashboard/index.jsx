@@ -39,10 +39,14 @@ const { Text, Title } = Typography;
 const CHART_CONFIG = { mode: 'desktop-browser' };
 const CHART_HEIGHT = 360;
 
-const HOUR_OPTIONS = [1, 2, 4, 8].map((h) => ({
-  label: `最近 ${h} 小时`,
-  value: h,
-}));
+const RANGE_OPTIONS = [
+  { label: '最近 30 分钟', value: 30 },
+  { label: '最近 10 分钟', value: 10 },
+  { label: '最近 1 小时', value: 60 },
+  { label: '最近 2 小时', value: 120 },
+  { label: '最近 4 小时', value: 240 },
+  { label: '最近 8 小时', value: 480 },
+];
 
 const REFRESH_OPTIONS = [
   { label: '慢 (1分钟)', value: 60 },
@@ -66,7 +70,7 @@ const METRICS = [
   { key: 'preemptions_per_min', label: '抢占速率', axis: '次/分钟', unit: '次/min', decimals: 2 },
 ];
 
-const DEFAULT_HOURS = 1;
+const DEFAULT_RANGE_MINUTES = 30;
 const DEFAULT_REFRESH = 30;
 const DEFAULT_METRIC = 'running';
 
@@ -148,7 +152,7 @@ const MetricCard = ({ title, value, unit, sub, grow = 1, minWidth = 165 }) => (
 const ModelDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState('realtime');
-  const [hours, setHours] = useState(DEFAULT_HOURS);
+  const [rangeMinutes, setRangeMinutes] = useState(DEFAULT_RANGE_MINUTES);
   const [dateRange, setDateRange] = useState([]);
   const [refreshInterval, setRefreshInterval] = useState(DEFAULT_REFRESH);
   const [metricKey, setMetricKey] = useState(DEFAULT_METRIC);
@@ -180,7 +184,7 @@ const ModelDashboard = () => {
           end_timestamp: Math.floor(dateRange[1].getTime() / 1000),
         };
       } else {
-        params = { hours };
+        params = { minutes: rangeMinutes };
       }
 
       const res = await API.get('/api/model-dashboard/metrics', { params });
@@ -198,7 +202,7 @@ const ModelDashboard = () => {
     } finally {
       if (requestSeq === requestSeqRef.current) setLoading(false);
     }
-  }, [historical, dateRange, hours]);
+  }, [historical, dateRange, rangeMinutes]);
 
   useEffect(() => {
     loadData();
@@ -351,9 +355,9 @@ const ModelDashboard = () => {
               />
             ) : (
               <Select
-                value={hours}
-                onChange={setHours}
-                optionList={HOUR_OPTIONS}
+                value={rangeMinutes}
+                onChange={setRangeMinutes}
+                optionList={RANGE_OPTIONS}
                 style={{ width: 130 }}
               />
             )}

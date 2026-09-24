@@ -40,13 +40,14 @@ import { API, showError } from '../../helpers';
 const { Text } = Typography;
 
 const CHART_CONFIG = { mode: 'desktop-browser' };
-const BUCKET_MINUTES = 5;
-
-const HOUR_OPTIONS = [1, 2, 4].map((h) => ({
-  label: `最近 ${h} 小时`,
-  value: h,
-}));
-const DEFAULT_HOURS = 1;
+const RANGE_OPTIONS = [
+  { label: '最近 30 分钟', value: 30 },
+  { label: '最近 10 分钟', value: 10 },
+  { label: '最近 1 小时', value: 60 },
+  { label: '最近 2 小时', value: 120 },
+  { label: '最近 4 小时', value: 240 },
+];
+const DEFAULT_RANGE_MINUTES = 30;
 
 const REFRESH_OPTIONS = [
   { label: '低 (1分)', value: 60 },
@@ -182,7 +183,7 @@ function summarizeRateByBucket(items, field) {
 const PerformanceDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState('realtime');
-  const [hours, setHours] = useState(DEFAULT_HOURS);
+  const [rangeMinutes, setRangeMinutes] = useState(DEFAULT_RANGE_MINUTES);
   const [dateRange, setDateRange] = useState([]);
   const [rawItems, setRawItems] = useState([]);
   const [metric, setMetric] = useState('frt');
@@ -190,6 +191,7 @@ const PerformanceDashboard = () => {
   const [filterModel, setFilterModel] = useState('');
   const [refreshInterval, setRefreshInterval] = useState(DEFAULT_REFRESH);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [bucketSeconds, setBucketSeconds] = useState(60);
   const refreshTimerRef = useRef(null);
   const requestSeqRef = useRef(0);
 
@@ -214,9 +216,9 @@ const PerformanceDashboard = () => {
         }
         params = { start_timestamp: startTs, end_timestamp: endTs };
       } else {
-        // 实时模式每次刷新只传 hours，由后端用当前 time.Now() 重建滑动窗口。
+        // 实时模式每次刷新只传 minutes，由后端用当前 time.Now() 重建滑动窗口。
         // 不能把首次加载的 start/end 固定下来，否则卡片和曲线都会逐渐“假实时”。
-        params = { hours };
+        params = { minutes: rangeMinutes };
       }
       if (isIgnoreKey) params.ignore_key = 'true';
 
@@ -227,6 +229,7 @@ const PerformanceDashboard = () => {
       if (requestSeq !== requestSeqRef.current) return;
 
       setRawItems(res.data.data.items || []);
+      setBucketSeconds(res.data.data.bucket_seconds || 300);
       setLastUpdated(new Date());
     } catch (e) {
       if (requestSeq === requestSeqRef.current) {
@@ -235,7 +238,7 @@ const PerformanceDashboard = () => {
     } finally {
       if (requestSeq === requestSeqRef.current) setLoading(false);
     }
-  }, [hours, isHistorical, dateRange, isIgnoreKey]);
+  }, [rangeMinutes, isHistorical, dateRange, isIgnoreKey]);
 
   useEffect(() => {
     loadData();
@@ -254,15 +257,17 @@ const PerformanceDashboard = () => {
   }, [isHistorical, loadData, refreshInterval]);
 
   const enrichedItems = useMemo(
-    () =>
-      rawItems.map((it) => ({
+    () => {
+      const bucketMinutes = Math.max(1, bucketSeconds / 60);
+      return rawItems.map((it) => ({
         ...it,
-        rpm: (Number(it.count) || 0) / BUCKET_MINUTES,
+        rpm: (Number(it.count) || 0) / bucketMinutes,
         tpm:
           ((Number(it.prompt_tokens) || 0) + (Number(it.completion_tokens) || 0)) /
-          BUCKET_MINUTES,
-      })),
-    [rawItems],
+          bucketMinutes,
+      }));
+    },
+    [rawItems, bucketSeconds],
   );
 
   const filteredItems = useMemo(
@@ -373,9 +378,13 @@ const PerformanceDashboard = () => {
   );
 
   const spec = useMemo(() => {
+    const rangeLabel =
+      RANGE_OPTIONS.find((option) => option.value === rangeMinutes)?.label ||
+      `最近 ${rangeMinutes} 分钟`;
+    const bucketLabel = bucketSeconds === 60 ? '1 分钟' : '5 分钟';
     const subtext = isHistorical
-      ? '历史数据 ｜ 粒度：5 分钟'
-      : `最近 ${hours} 小时 ｜ 粒度：5 分钟 ｜ 实时滑动窗口`;
+      ? `历史数据 ｜ 粒度：${bucketLabel}`
+      : `${rangeLabel} ｜ 粒度：${bucketLabel} ｜ 实时滑动窗口`;
 
     return {
       type: 'line',
@@ -411,7 +420,7 @@ const PerformanceDashboard = () => {
         },
       },
     };
-  }, [chartData, metricMeta, hours, isHistorical]);
+  }, [chartData, metricMeta, rangeMinutes, bucketSeconds, isHistorical]);
 
   return (
     <div className='mt-[60px] px-2'>
@@ -448,9 +457,9 @@ const PerformanceDashboard = () => {
                 ) : (
                   <>
                     <Select
-                      value={hours}
-                      onChange={(v) => setHours(v)}
-                      optionList={HOUR_OPTIONS}
+                      value={rangeMinutes}
+                      onChange={(v) => setRangeMinutes(v)}
+                      optionList={RANGE_OPTIONS}
                       style={{ width: 140 }}
                     />
                     <Select

@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/log_history_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
 
@@ -22,6 +23,35 @@ func RegisterScheduledSystemTasks() {
 	service.RegisterSystemTaskHandler(modelUpdateHandler{})
 	service.RegisterSystemTaskHandler(midjourneyPollHandler{})
 	service.RegisterSystemTaskHandler(asyncTaskPollHandler{})
+	service.RegisterSystemTaskHandler(logHistoryMigrationHandler{})
+}
+
+type logHistoryMigrationHandler struct{}
+
+func (logHistoryMigrationHandler) Type() string { return model.SystemTaskTypeLogHistoryMigration }
+
+func (logHistoryMigrationHandler) Enabled() bool {
+	setting := log_history_setting.GetSetting()
+	supported, _ := model.LogHistoryMigrationSupported()
+	return setting.Enabled && supported
+}
+
+func (logHistoryMigrationHandler) Interval() time.Duration {
+	setting := log_history_setting.GetSetting()
+	return time.Duration(setting.IntervalMinutes) * time.Minute
+}
+
+func (logHistoryMigrationHandler) NewPayload() any { return nil }
+
+func (logHistoryMigrationHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+	setting := log_history_setting.GetSetting()
+	cutoff := time.Now().Add(-time.Duration(setting.RetentionDays) * 24 * time.Hour).Unix()
+	result, err := model.MigrateLogsToHistory(ctx, cutoff, setting.BatchSize)
+	if err != nil {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, result, err)
+		return
+	}
+	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, result, nil)
 }
 
 // channelTestHandler runs the scheduled "test all channels" job. Enablement and
