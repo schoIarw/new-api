@@ -44,6 +44,8 @@ func TestModelDashboardStepSeconds(t *testing.T) {
 		want       int64
 	}{
 		{name: "realtime 1h", duration: 3600, historical: false, want: 30},
+		{name: "realtime 10m", duration: 10 * 60, historical: false, want: 60},
+		{name: "realtime 30m", duration: 30 * 60, historical: false, want: 60},
 		{name: "realtime 2h", duration: 2 * 3600, historical: false, want: 30},
 		{name: "realtime 4h", duration: 4 * 3600, historical: false, want: 60},
 		{name: "realtime 8h", duration: 8 * 3600, historical: false, want: 120},

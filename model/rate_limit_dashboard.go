@@ -11,7 +11,10 @@ import (
 // PeriodIndex is zero-based from queryStart: 0 is the oldest period in the requested window.
 type RateLimitPeriodGroupStat struct {
 	PeriodIndex int64  `json:"period_index" gorm:"column:period_index"`
+	UserID      int    `json:"user_id" gorm:"column:user_id"`
+	Group       string `json:"group" gorm:"column:token_group"`
 	TokenName   string `json:"token_name" gorm:"column:token_name"`
+	ModelName   string `json:"model_name" gorm:"column:model_name"`
 	Account     string `json:"account" gorm:"column:account"`
 	Count       int64  `json:"count" gorm:"column:count"`
 }
@@ -44,10 +47,10 @@ func GetRateLimitPeriodGroupStats(startTimestamp, endTimestamp, durationSec int6
 
 	periodExpr := rateLimitPeriodIndexExpr(startTimestamp, durationSec)
 	selectExpr := fmt.Sprintf(
-		"%s as period_index, token_name, account, count(*) as count",
-		periodExpr,
+		"%s as period_index, user_id, %s as token_group, token_name, model_name, account, count(*) as count",
+		periodExpr, logGroupCol,
 	)
-	groupExpr := fmt.Sprintf("%s, token_name, account", periodExpr)
+	groupExpr := fmt.Sprintf("%s, user_id, %s, token_name, model_name, account", periodExpr, logGroupCol)
 
 	var stats []RateLimitPeriodGroupStat
 	err := LOG_DB.Table("logs").

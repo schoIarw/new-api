@@ -277,6 +277,7 @@ func migrateDB() error {
 		&Redemption{},
 		&Ability{},
 		&Log{},
+		&LogHistory{},
 		&Midjourney{},
 		&TopUp{},
 		&QuotaData{},
@@ -339,6 +340,7 @@ func migrateDBFast() error {
 		{&Redemption{}, "Redemption"},
 		{&Ability{}, "Ability"},
 		{&Log{}, "Log"},
+		{&LogHistory{}, "LogHistory"},
 		{&Midjourney{}, "Midjourney"},
 		{&TopUp{}, "TopUp"},
 		{&QuotaData{}, "QuotaData"},
@@ -401,7 +403,7 @@ func migrateLOGDB() error {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		return migrateClickHouseLogDB()
 	}
-	return LOG_DB.AutoMigrate(&Log{})
+	return LOG_DB.AutoMigrate(&Log{}, &LogHistory{})
 }
 
 func migrateClickHouseLogDB() error {

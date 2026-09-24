@@ -39,6 +39,34 @@ func TestParseRateLimitDashboardPeriods(t *testing.T) {
 	}
 }
 
+func TestResolveRateLimitDashboardPeriodsByMinutes(t *testing.T) {
+	periods, minutes, err := resolveRateLimitDashboardPeriods("", "30", 10*60)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if periods != 3 || minutes != 30 {
+		t.Fatalf("periods=%d minutes=%d, want 3 and 30", periods, minutes)
+	}
+
+	periods, minutes, err = resolveRateLimitDashboardPeriods("", "10", 15*60)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if periods != 1 || minutes != 10 {
+		t.Fatalf("periods=%d minutes=%d, want 1 and 10", periods, minutes)
+	}
+}
+
+func TestResolveRateLimitDashboardPeriodsDefaultsToThirtyMinutes(t *testing.T) {
+	periods, minutes, err := resolveRateLimitDashboardPeriods("", "", 5*60)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if periods != 6 || minutes != 30 {
+		t.Fatalf("periods=%d minutes=%d, want 6 and 30", periods, minutes)
+	}
+}
+
 func TestRateLimitDashboardWindowRealtime(t *testing.T) {
 	start, end, historical, err := rateLimitDashboardWindow(10_000, 0, 60, 20)
 	if err != nil {

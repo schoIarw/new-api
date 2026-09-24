@@ -2,7 +2,9 @@ package controller
 
 import (
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -154,6 +156,12 @@ func GetLogsSelfStat(c *gin.Context) {
 
 // RateLimitDashboardItem 限流看板单条数据
 type RateLimitDashboardItem struct {
+	LimitType    string `json:"limit_type"`
+	LimitKey     string `json:"limit_key"`
+	Label        string `json:"label"`
+	Group        string `json:"group"`
+	ModelName    string `json:"model_name"`
+	UserID       int    `json:"user_id"`
 	TokenName    string `json:"token_name"`
 	Account      string `json:"account"`
 	Count        int64  `json:"count"`
@@ -171,35 +179,105 @@ type RateLimitPeriodData struct {
 
 // buildRateLimitItems 将原始统计数据转换为看板条目，并标记是否限流
 func buildRateLimitItems(stats []model.RateLimitGroupStat) []RateLimitDashboardItem {
-	// 按 token_name 聚合总请求数（token 级限流跨 account 生效）
-	tokenTotalCount := make(map[string]int64)
-	for _, s := range stats {
-		tokenTotalCount[s.TokenName] += s.Count
+	itemsByKey := make(map[string]*RateLimitDashboardItem)
+	add := func(item RateLimitDashboardItem, count int64) {
+		if existing, ok := itemsByKey[item.LimitKey]; ok {
+			existing.Count += count
+			return
+		}
+		item.Count = count
+		itemsByKey[item.LimitKey] = &item
 	}
 
-	items := make([]RateLimitDashboardItem, 0, len(stats))
 	for _, s := range stats {
-		item := RateLimitDashboardItem{
-			TokenName:    s.TokenName,
-			Account:      s.Account,
-			Count:        s.Count,
-			SuccessLimit: 0,
-			RateLimited:  false,
+		groupLabel := s.Group
+		if strings.TrimSpace(groupLabel) == "" {
+			groupLabel = "(未分组)"
 		}
-		// 匹配分组速率限制配置：优先按 token_name 匹配（跨 account 聚合计数），其次按 account 匹配
-		if _, successLimit, found := setting.GetGroupRateLimit(s.TokenName); found {
-			item.SuccessLimit = successLimit
-			if successLimit > 0 && tokenTotalCount[s.TokenName] >= int64(successLimit) {
-				item.RateLimited = true
+		matched := false
+
+		groupSuccessLimit := setting.ModelRequestRateLimitSuccessCount
+		if setting.HasGroupModelRateLimit(s.Group) {
+			groupSuccessLimit = 0
+			if _, success, found := setting.GetGroupModelRateLimit(s.Group, "all"); found {
+				groupSuccessLimit = success
 			}
-		} else if _, successLimit, found := setting.GetGroupRateLimit(s.Account); found {
-			item.SuccessLimit = successLimit
-			if successLimit > 0 && s.Count >= int64(successLimit) {
-				item.RateLimited = true
+		} else if _, success, found := setting.GetGroupRateLimit(s.Group); found {
+			groupSuccessLimit = success
+		}
+		if groupSuccessLimit > 0 {
+			matched = true
+			add(RateLimitDashboardItem{
+				LimitType:    "group",
+				LimitKey:     "group|" + s.Group + "|" + strconv.Itoa(s.UserID),
+				Label:        "令牌组 " + groupLabel + " / 用户#" + strconv.Itoa(s.UserID),
+				Group:        s.Group,
+				UserID:       s.UserID,
+				TokenName:    s.TokenName,
+				SuccessLimit: groupSuccessLimit,
+			}, s.Count)
+		}
+
+		if s.ModelName != "" && setting.HasGroupModelRateLimit(s.Group) {
+			if _, success, found := setting.GetGroupModelRateLimit(s.Group, s.ModelName); found && success > 0 {
+				matched = true
+				add(RateLimitDashboardItem{
+					LimitType:    "group_model",
+					LimitKey:     "group_model|" + s.Group + "|" + strconv.Itoa(s.UserID) + "|" + s.ModelName,
+					Label:        "组+模型 " + groupLabel + " / " + s.ModelName + " / 用户#" + strconv.Itoa(s.UserID),
+					Group:        s.Group,
+					ModelName:    s.ModelName,
+					UserID:       s.UserID,
+					TokenName:    s.TokenName,
+					SuccessLimit: success,
+				}, s.Count)
 			}
 		}
-		items = append(items, item)
+
+		if strings.TrimSpace(s.Account) != "" {
+			limits, configured, active, counterIdentity := setting.ResolveUserIdentifierRateLimit(s.Group, s.Account)
+			if configured && active && limits[1] > 0 {
+				matched = true
+				identifierLabel := s.Account
+				if strings.HasPrefix(counterIdentity, "prefix:") {
+					identifierLabel = strings.TrimPrefix(counterIdentity, "prefix:") + "*"
+				}
+				add(RateLimitDashboardItem{
+					LimitType:    "group_phone",
+					LimitKey:     "group_phone|" + s.Group + "|" + counterIdentity,
+					Label:        "组+手机号 " + groupLabel + " / " + identifierLabel,
+					Group:        s.Group,
+					Account:      identifierLabel,
+					TokenName:    s.TokenName,
+					SuccessLimit: limits[1],
+				}, s.Count)
+			}
+		}
+
+		if !matched {
+			add(RateLimitDashboardItem{
+				LimitType: "unconfigured",
+				LimitKey:  "unconfigured|" + s.Group + "|" + strconv.Itoa(s.UserID) + "|" + s.TokenName + "|" + s.Account,
+				Label:     "未配置阈值 " + groupLabel + " / " + s.TokenName + " / " + s.Account,
+				Group:     s.Group,
+				UserID:    s.UserID,
+				TokenName: s.TokenName,
+				Account:   s.Account,
+			}, s.Count)
+		}
 	}
+
+	items := make([]RateLimitDashboardItem, 0, len(itemsByKey))
+	for _, item := range itemsByKey {
+		item.RateLimited = item.SuccessLimit > 0 && item.Count >= int64(item.SuccessLimit)
+		items = append(items, *item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].LimitType != items[j].LimitType {
+			return items[i].LimitType < items[j].LimitType
+		}
+		return items[i].Label < items[j].Label
+	})
 	return items
 }
 
@@ -228,20 +306,28 @@ func GetPerformanceDashboard(c *gin.Context) {
 		startTimestamp = startTS
 		endTimestamp = endTS
 	} else {
-		hours, _ := strconv.Atoi(c.Query("hours"))
-		if hours <= 0 {
-			hours = 1
+		minutes, _ := strconv.Atoi(c.Query("minutes"))
+		if minutes <= 0 {
+			hours, _ := strconv.Atoi(c.Query("hours"))
+			minutes = hours * 60
 		}
-		if hours > 4 {
-			hours = 4
+		if minutes <= 0 {
+			minutes = 30
 		}
-		startTimestamp = now - int64(hours)*3600
+		if minutes > 4*60 {
+			minutes = 4 * 60
+		}
+		startTimestamp = now - int64(minutes)*60
 		endTimestamp = now
 	}
 
 	ignoreKey := c.Query("ignore_key") == "true"
+	bucketSeconds := int64(300)
+	if endTimestamp-startTimestamp <= 30*60 {
+		bucketSeconds = 60
+	}
 
-	stats, err := model.GetPerformanceDashboardStats(startTimestamp, endTimestamp, ignoreKey)
+	stats, err := model.GetPerformanceDashboardStats(startTimestamp, endTimestamp, bucketSeconds, ignoreKey)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -252,6 +338,7 @@ func GetPerformanceDashboard(c *gin.Context) {
 		"message": "",
 		"data": gin.H{
 			"items":           stats,
+			"bucket_seconds":  bucketSeconds,
 			"start_timestamp": startTimestamp,
 			"end_timestamp":   endTimestamp,
 		},

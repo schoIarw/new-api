@@ -32,6 +32,7 @@ import {
   MessageSquare,
   Palette,
   Activity,
+  Archive,
 } from 'lucide-react';
 
 import SystemSetting from '../../components/settings/SystemSetting';
@@ -45,6 +46,7 @@ import RatioSetting from '../../components/settings/RatioSetting';
 import ChatsSetting from '../../components/settings/ChatsSetting';
 import DrawingSetting from '../../components/settings/DrawingSetting';
 import PerformanceSetting from '../../components/settings/PerformanceSetting';
+import LogHistoryMigrationSetting from '../../components/settings/LogHistoryMigrationSetting';
 
 const Setting = () => {
   const { t } = useTranslation();
@@ -54,6 +56,16 @@ const Setting = () => {
   let panes = [];
 
   if (isRoot()) {
+    panes.push({
+      tab: (
+        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <Archive size={18} />
+          {t('日志迁移')}
+        </span>
+      ),
+      content: <LogHistoryMigrationSetting />,
+      itemKey: 'log-history',
+    });
     panes.push({
       tab: (
         <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>

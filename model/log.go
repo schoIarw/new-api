@@ -586,7 +586,10 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 
 // RateLimitGroupStat 限流看板中按 TokenName + Account 聚合的请求数统计
 type RateLimitGroupStat struct {
+	UserID    int    `json:"user_id" gorm:"column:user_id"`
+	Group     string `json:"group" gorm:"column:token_group"`
 	TokenName string `json:"token_name" gorm:"column:token_name"`
+	ModelName string `json:"model_name" gorm:"column:model_name"`
 	Account   string `json:"account" gorm:"column:account"`
 	Count     int64  `json:"count" gorm:"column:count"`
 }
@@ -596,11 +599,11 @@ type RateLimitGroupStat struct {
 func GetRateLimitGroupStats(startTimestamp, endTimestamp int64) ([]RateLimitGroupStat, error) {
 	var stats []RateLimitGroupStat
 	err := LOG_DB.Table("logs").
-		Select("token_name, account, count(*) as count").
+		Select("user_id, "+logGroupCol+" as token_group, token_name, model_name, account, count(*) as count").
 		Where("type = ?", LogTypeConsume).
 		Where("created_at >= ?", startTimestamp).
 		Where("created_at <= ?", endTimestamp).
-		Group("token_name, account").
+		Group("user_id, "+logGroupCol+", token_name, model_name, account").
 		Order("count DESC").
 		Scan(&stats).Error
 	if err != nil {
@@ -610,7 +613,7 @@ func GetRateLimitGroupStats(startTimestamp, endTimestamp int64) ([]RateLimitGrou
 	return stats, nil
 }
 
-// PerformanceBucketStat 性能看板按 5 分钟桶 + token_name + model_name 聚合的统计。
+// PerformanceBucketStat 性能看板按动态时间桶 + token_name + model_name 聚合的统计。
 // FRT 仅对 is_stream=true 的记录统计；token 生成速率 = completion_tokens / (use_time - frt/1000)。
 type PerformanceBucketStat struct {
 	TokenName        string  `json:"token_name" gorm:"column:token_name"`
@@ -647,9 +650,12 @@ func logTrueVal() string {
 	return "1"
 }
 
-// GetPerformanceDashboardStats 按 5 分钟粒度分组统计性能指标。
+// GetPerformanceDashboardStats 按指定秒数粒度分组统计性能指标。
 // ignoreKey=true 时仅按 model_name 分组（token_name 返回空串）。
-func GetPerformanceDashboardStats(startTimestamp, endTimestamp int64, ignoreKey bool) ([]PerformanceBucketStat, error) {
+func GetPerformanceDashboardStats(startTimestamp, endTimestamp, bucketSeconds int64, ignoreKey bool) ([]PerformanceBucketStat, error) {
+	if bucketSeconds != 60 && bucketSeconds != 300 {
+		return nil, errors.New("性能看板统计粒度无效")
+	}
 	var stats []PerformanceBucketStat
 	frt := frtExpr()
 	trueVal := logTrueVal()
@@ -674,7 +680,7 @@ func GetPerformanceDashboardStats(startTimestamp, endTimestamp int64, ignoreKey 
 	}
 
 	query := fmt.Sprintf(
-		`%s, model_name, floor(created_at / 300) * 300 as bucket,
+		`%s, model_name, floor(created_at / %d) * %d as bucket,
 		count(*) as count,
 		COALESCE(sum(prompt_tokens), 0) as prompt_tokens,
 		COALESCE(sum(completion_tokens), 0) as completion_tokens,
@@ -684,7 +690,7 @@ func GetPerformanceDashboardStats(startTimestamp, endTimestamp int64, ignoreKey 
 		COALESCE(AVG(%s), 0) as avg_token_rate,
 		COALESCE(MIN(%s), 0) as min_token_rate,
 		COALESCE(MAX(%s), 0) as max_token_rate`,
-		tokenNameCol, frtCase, frtCase, frtCase, tokenRate, tokenRate, tokenRate,
+		tokenNameCol, bucketSeconds, bucketSeconds, frtCase, frtCase, frtCase, tokenRate, tokenRate, tokenRate,
 	)
 
 	err := LOG_DB.Table("logs").
